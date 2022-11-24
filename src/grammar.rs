@@ -56,11 +56,15 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule type_definition_body() -> TypeDefKind = kind:(
-		typedef_inline_enum()
+		typedef_opaque()
+		/ typedef_inline_enum()
 		/ typedef_wide_enum()
 		/ typedef_inline_struct()
 		/ typedef_wide_struct()
 	) { kind }
+
+	rule typedef_opaque() -> TypeDefKind
+		= _ "=" _ "opaque" nl() { TypeDefKind::Opaque }
 
 	rule typedef_struct_field() -> TypedefStructFieldRuleReturn
 		= names:ident() ++ __ _ ":" _ ty:ty()

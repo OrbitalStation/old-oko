@@ -27,6 +27,7 @@ fn create_typedef(typedef: TypeDefIndex) {
 				let mut fields = fields.iter().map(|x| x.ty.llvm_type()).collect::<Vec <_>>();
 				unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
 			},
+			TypeDefKind::Opaque => { /* ignore */ }
 			_ => todo!()
 		},
 		BakedTypeKind::Builtin(_) => { /* ignore */ }

@@ -28,6 +28,7 @@ use llvm::core::*;
 use core::ptr::null_mut;
 use std::ffi::CString;
 
+#[allow(dead_code)]
 unsafe fn codegen(input: &str) {
     let context = LLVMContextCreate();
     let module = LLVMModuleCreateWithName(b"example_module\0".as_ptr() as *const _);

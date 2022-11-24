@@ -1,6 +1,6 @@
-ty Iter
-	x: u8
+ty Opaque = opaque
 
-foo iter: Iter -> Iter = extern
+* Is needed because otherwise cunning LLVM will cut `Opaque` out
+foo iter: Opaque -> Opaque = extern
 
 puts str: *u8 -> i32 = extern
