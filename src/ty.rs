@@ -1,4 +1,5 @@
 use core::fmt::{Debug, Formatter, Result, Write};
+use crate::*;
 
 #[derive(Debug)]
 pub struct TypeDef {
@@ -14,8 +15,9 @@ pub struct TypeDefIndex {
 impl Debug for TypeDefIndex {
 	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
 		match Type::type_list() {
-			TypeList::Raw(raw) => raw[self.index].as_backed().fmt(f)
-		}
+			TypeList::Raw(raw) => raw[self.index].as_backed(),
+			TypeList::Baked(baked) => baked[self.index].as_ordinary()
+		}.fmt(f)
 	}
 }
 
@@ -41,7 +43,7 @@ pub struct StructField {
 	pub ty: Type
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct TypePointers {
 	/// How many pointers are on a type
 	///
@@ -55,6 +57,20 @@ pub struct TypePointers {
 	/// ^T -> 0b1
 	/// *^^**^T -> 0b011001
 	pub muts: u8
+}
+
+impl Debug for TypePointers {
+	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
+		for i in 0..self.len {
+			let is_mutable = ((self.muts >> i) & 1) != 0;
+			f.write_char(if is_mutable {
+				'^'
+			} else {
+				'*'
+			})?
+		}
+		Ok(())
+	}
 }
 
 impl TypePointers {
@@ -89,36 +105,30 @@ pub enum Type {
 
 impl Debug for Type {
 	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
-		match Self::type_list() {
-			TypeList::Raw(raw) => match self {
-				Self::Scalar {
-					index,
-					ptrs
-				} => {
-					for i in 0..ptrs.len {
-						let is_mutable = ((ptrs.muts >> i) & 1) != 0;
-						f.write_char(if is_mutable {
-							'^'
-						} else {
-							'*'
-						})?
-					}
-					f.write_str(raw[*index].name())
-				},
-				Self::Tuple { types } => {
-					f.write_char('(')?;
-					for ty in types.iter().rev().skip(1).rev() {
-						ty.fmt(f)?;
-						f.write_str(", ")?
-					}
-					if let Some(last) = types.last() {
-						last.fmt(f)?;
-						if types.len() == 1 {
-							f.write_char(',')?
-						}
-					}
-					f.write_char(')')
+		match self {
+			Self::Scalar {
+				index,
+				ptrs
+			} => {
+				ptrs.fmt(f)?;
+				match Self::type_list() {
+					TypeList::Raw(raw) => f.write_str(raw[*index].name()),
+					TypeList::Baked(baked) => f.write_str(baked[*index].name())
 				}
+			},
+			Self::Tuple { types } => {
+				f.write_char('(')?;
+				for ty in types.iter().rev().skip(1).rev() {
+					ty.fmt(f)?;
+					f.write_str(", ")?
+				}
+				if let Some(last) = types.last() {
+					last.fmt(f)?;
+					if types.len() == 1 {
+						f.write_char(',')?
+					}
+				}
+				f.write_char(')')
 			}
 		}
 	}
@@ -134,7 +144,8 @@ impl Type {
 
 	pub fn raw() -> &'static mut Vec <RawType> {
 		match Self::type_list() {
-			TypeList::Raw(raw) => raw
+			TypeList::Raw(raw) => raw,
+			_ => unimplemented!()
 		}
 	}
 
@@ -172,7 +183,30 @@ impl Type {
 }
 
 pub enum TypeList {
-	Raw(Vec <RawType>)
+	Raw(Vec <RawType>),
+	Baked(Vec <BakedType>)
+}
+
+#[derive(Debug)]
+pub enum BakedType {
+	Builtin(usize),
+	Ordinary(TypeDef)
+}
+
+impl BakedType {
+	pub fn name(&self) -> &str {
+		match self {
+			Self::Builtin(builtin) => BUILTIN_TYPES[*builtin].name,
+			Self::Ordinary(ord) => &ord.name
+		}
+	}
+
+	pub fn as_ordinary(&self) -> &TypeDef {
+		match self {
+			Self::Ordinary(x) => x,
+			_ => unimplemented!()
+		}
+	}
 }
 
 #[derive(Debug)]

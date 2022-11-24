@@ -6,11 +6,31 @@ fn main() {
 
     let mut stmts: Vec <Stmt> = parse_raw_oko_code(&code).unwrap();
 
-    check_each_function_is_unique_and_collect_duplicates_into_one(&mut stmts);
+    check_each_function_is_unique_and_collect_overloads_into_one(&mut stmts);
 
     parse_body_in_each_function(&mut stmts);
 
+    bake_types();
+
     println!("{stmts:#?}");
+}
+
+fn bake_types() {
+    let types = core::mem::replace(match Type::type_list() {
+        TypeList::Raw(raw) => raw,
+        _ => unimplemented!()
+    }, vec![]);
+
+    let types = types.into_iter().map(|ty| match ty {
+        RawType::Backed(typedef) => BakedType::Ordinary(typedef),
+        RawType::Stub(stub) => if let Some((idx, _)) = BUILTIN_TYPES.iter().enumerate().find(|(_, x)| x.name == stub) {
+            BakedType::Builtin(idx)
+        } else {
+            panic!("unknown type: {stub}")
+        }
+    }).collect();
+
+    *Type::type_list() = TypeList::Baked(types)
 }
 
 fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
@@ -71,7 +91,7 @@ fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
     }
 }
 
-fn check_each_function_is_unique_and_collect_duplicates_into_one(stmts: &mut Vec <Stmt>) {
+fn check_each_function_is_unique_and_collect_overloads_into_one(stmts: &mut Vec <Stmt>) {
     let mut funs: HashMap <_, usize> = HashMap::new();
 
     for i in 0..stmts.len() {
