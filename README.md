@@ -41,6 +41,10 @@ ty Filter
     pred: Pred
 ```
 
+### Opaques
+
+`ty Name = opaque`
+
 ## Function definition
 
 ### Short form

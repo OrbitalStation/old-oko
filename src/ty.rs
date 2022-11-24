@@ -172,7 +172,10 @@ impl Type {
 				}
 				ty
 			},
-			_ => todo!()
+			TypeKind::Tuple { types } => {
+				let mut types = types.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
+				unsafe { LLVMStructType(types.as_mut_ptr(), types.len() as _, 0) }
+			}
 		}
 	}
 
