@@ -8,4 +8,4 @@ macro_rules! modules {
 	)*};
 }
 
-modules!(grammar ty stmt tools fun expr parse_fun_input extern_fun builtin_ty);
+modules!(grammar ty stmt tools fun expr parse_fun_input extern_fun builtin_ty handlers);
