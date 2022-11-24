@@ -1,18 +1,43 @@
 use std::ffi::CString;
 use llvm::core::*;
+use llvm::prelude::*;
 use crate::*;
 
-pub fn transpile_statements_into_llvm(stmts: Vec <Stmt>) {
+pub fn transpile_statements_into_llvm(stmts: &[Stmt]) {
 	for stmt in stmts {
 		match stmt {
 			Stmt::ExternFun(fun) => create_extern_fun(fun),
 			Stmt::TypeDef(typedef) => create_typedef(typedef),
-			_ => todo!()
+			Stmt::FunDef(fundef) => create_fundef(stmts, fundef),
+
+			Stmt::Stub => unreachable!()
 		}
 	}
 }
 
-fn create_typedef(typedef: TypeDefIndex) {
+fn create_fundef(stmts: &[Stmt], fundef: &FunDef) {
+	let FunDef { overloads, .. } = fundef;
+	for FunDefOverloadablePart { body, llvm_fun, .. } in overloads {
+		let body = match body {
+			FunBody::Baked(exprs) => exprs,
+			_ => unreachable!()
+		};
+
+		let fun = llvm_fun.unwrap();
+
+		let bb = unsafe { LLVMAppendBasicBlockInContext(llvm_context(), fun, b"entry\0".as_ptr() as *const _) };
+		unsafe { LLVMPositionBuilderAtEnd(llvm_builder(), bb) }
+
+		for expr in body {
+			match expr {
+				ExprKind::Return(expr) => unsafe { LLVMBuildRet(llvm_builder(), expr.kind.to_llvm_value(stmts)); },
+				_ => todo!()
+			}
+		}
+	}
+}
+
+fn create_typedef(typedef: &TypeDefIndex) {
 	// At this point `bake_types()` has already created the type name
 	// but has not set the body, so that's what we gonna do here
 
@@ -34,11 +59,12 @@ fn create_typedef(typedef: TypeDefIndex) {
 	}
 }
 
-fn create_extern_fun(fun: ExternFun) {
-	let mut args = fun.args.iter().map(|ty| ty.llvm_type()).collect::<Vec <_>>();
-	let fun_type = unsafe {
-		LLVMFunctionType(fun.ret_ty.llvm_type(), args.as_mut_ptr(), args.len() as _, 0)
-	};
-	let name = CString::new(fun.name).unwrap();
-	let _ = unsafe { LLVMAddFunction(current_llvm_module(), name.as_ptr(), fun_type) };
+fn create_extern_fun(fun: &ExternFun) {
+	create_llvm_fun(&fun.name, fun.args.iter().map(|ty| ty.llvm_type()).collect::<Vec <_>>(), fun.ret_ty.llvm_type());
+}
+
+pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: LLVMTypeRef) -> LLVMValueRef {
+	let fun_type = unsafe { LLVMFunctionType(ret_ty, args.as_mut_ptr(), args.len() as _, 0) };
+	let name = CString::new(name).unwrap();
+	unsafe { LLVMAddFunction(llvm_module(), name.as_ptr(), fun_type) }
 }

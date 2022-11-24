@@ -143,7 +143,7 @@ peg::parser! { grammar okolang() for str {
 	{?
 		let (fun_stmt_index, fun) = input.fun_by_name(&fun).ok_or("function call")?;
 
-		for overload in &fun.overloads {
+		for (fun_overload, overload) in fun.overloads.iter().enumerate() {
 			let args = match &args {
 				Some(x) => x.clone(),
 				None if overload.args.is_empty() => vec![],
@@ -163,6 +163,7 @@ peg::parser! { grammar okolang() for str {
 			return Ok(Expr {
 				kind: ExprKind::FunCall {
 					fun_stmt_index,
+					fun_overload,
 					args
 				},
 				ty: overload.ret_ty.as_determined().clone()
@@ -267,7 +268,8 @@ peg::parser! { grammar okolang() for str {
 							None => FunRetType::Determined(Type::UNIT_TUPLE),
 							Some(ty) => FunRetType::Determined(ty)
 						},
-						is_simple
+						is_simple,
+						llvm_fun: None
 					}]
 				})
 			}

@@ -35,6 +35,8 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
             _ => continue
         };
 
+        let overloads_num = bodies.len();
+
         match input.cur_mut() {
             Stmt::FunDef(fun) => for (overload_idx, body) in bodies.into_iter().enumerate() {
                 if fun.overloads[overload_idx].is_simple {
@@ -51,6 +53,16 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
                     }
                 }
 
+                let overload_name = if overloads_num == 1 {
+                    fun.name.clone()
+                } else {
+                    format!("{}.{overload_idx}", fun.name)
+                };
+
+                let args = fun.overloads[overload_idx].args.iter().map(|x| x.ty.llvm_type()).collect();
+                let ret_ty = fun.overloads[overload_idx].ret_ty.as_determined().llvm_type();
+
+                fun.overloads[overload_idx].llvm_fun = Some(create_llvm_fun(&overload_name, args, ret_ty));
                 fun.overloads[overload_idx].body = FunBody::Baked(body)
             },
             _ => unreachable!()

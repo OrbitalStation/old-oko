@@ -42,4 +42,3 @@ pub fn check_each_function_is_unique_and_collect_overloads_into_one(stmts: &mut 
 
     stmts.retain(|item| !matches!(item, Stmt::Stub))
 }
-

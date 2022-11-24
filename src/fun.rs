@@ -1,3 +1,4 @@
+use llvm::prelude::*;
 use crate::*;
 
 #[derive(Debug)]
@@ -11,7 +12,8 @@ pub struct FunDefOverloadablePart {
 	pub args: Vec <FunArg>,
 	pub body: FunBody,
 	pub ret_ty: FunRetType,
-	pub is_simple: bool
+	pub is_simple: bool,
+	pub llvm_fun: Option <LLVMValueRef>
 }
 
 impl FunDefOverloadablePart {
@@ -19,7 +21,8 @@ impl FunDefOverloadablePart {
 		args: vec![],
 		body: FunBody::Raw { lines: vec![] },
 		ret_ty: FunRetType::Undetermined,
-		is_simple: false
+		is_simple: false,
+		llvm_fun: None
 	};
 }
 
