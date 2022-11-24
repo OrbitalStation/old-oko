@@ -7,9 +7,9 @@ pub fn bake_types() {
     }, vec![]);
 
     let types = types.into_iter().map(|ty| match ty {
-        RawType::Backed(typedef) => BakedType::Ordinary(typedef),
+        RawType::Backed(typedef) => BakedType::ordinary(typedef),
         RawType::Stub(stub) => if let Some((idx, _)) = BUILTIN_TYPES.iter().enumerate().find(|(_, x)| x.name == stub) {
-            BakedType::Builtin(idx)
+            BakedType::builtin(idx)
         } else {
             panic!("unknown type: {stub}")
         }

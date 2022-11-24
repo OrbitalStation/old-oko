@@ -1,6 +1,6 @@
-* A typical boolean type
-ty bool = yes | no
+ty Iter
+	x: u8
 
-pass = ()
+foo iter: Iter -> Iter = extern
 
 puts str: *u8 -> i32 = extern

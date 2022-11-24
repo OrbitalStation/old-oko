@@ -40,7 +40,7 @@ peg::parser! { grammar okolang() for str {
 
 	rule ty() -> Type
 		= ptrs:$(['*' | '^']*) name:ident() { Type::meet_new_raw_scalar(ptrs, name, None) }
-		/ "(" _ types:(ty() ** (_ "," _)) _ ")" { Type::Tuple { types } }
+		/ "(" _ types:(ty() ** (_ "," _)) _ ")" { Type::from_kind(TypeKind::Tuple { types }) }
 
 	rule type_definition() -> TypeDefIndex
 		= "ty" __ name:ident() kind:type_definition_body()
@@ -55,7 +55,7 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule type_definition_body() -> TypeKind = kind:(
+	rule type_definition_body() -> TypeDefKind = kind:(
 		typedef_inline_enum()
 		/ typedef_wide_enum()
 		/ typedef_inline_struct()
@@ -71,8 +71,8 @@ peg::parser! { grammar okolang() for str {
 		})
 	}
 
-	rule typedef_inline_struct() -> TypeKind = _ "=" _ fields:(typedef_struct_field() ++ (_ "+" _)) nl() {
-		TypeKind::Struct {
+	rule typedef_inline_struct() -> TypeDefKind = _ "=" _ fields:(typedef_struct_field() ++ (_ "+" _)) nl() {
+		TypeDefKind::Struct {
 			fields: fields.into_iter().flatten().collect()
 		}
 	}
@@ -81,8 +81,8 @@ peg::parser! { grammar okolang() for str {
 		= "\t" v:typedef_struct_field() nl()
 	{ v }
 
-	rule typedef_wide_struct() -> TypeKind = nl() fields:typedef_wide_struct_field()+ {
-		TypeKind::Struct {
+	rule typedef_wide_struct() -> TypeDefKind = nl() fields:typedef_wide_struct_field()+ {
+		TypeDefKind::Struct {
 			fields: fields.into_iter().flatten().collect()
 		}
 	}
@@ -91,8 +91,8 @@ peg::parser! { grammar okolang() for str {
 		= name:ident() _ data:ty() ** __
 	{ EnumVariant { name, data } }
 
-	rule typedef_inline_enum() -> TypeKind = _ "=" _ variants:(typedef_enum_variant() ++ (_ "|" _)) nl() {
-		TypeKind::Enum {
+	rule typedef_inline_enum() -> TypeDefKind = _ "=" _ variants:(typedef_enum_variant() ++ (_ "|" _)) nl() {
+		TypeDefKind::Enum {
 			variants
 		}
 	}
@@ -101,8 +101,8 @@ peg::parser! { grammar okolang() for str {
 		= "\t" v:typedef_enum_variant() nl()
 	{ v }
 
-	rule typedef_wide_enum() -> TypeKind = nl() variants:typedef_wide_enum_variant()+ {
-		TypeKind::Enum {
+	rule typedef_wide_enum() -> TypeDefKind = nl() variants:typedef_wide_enum_variant()+ {
+		TypeDefKind::Enum {
 			variants
 		}
 	}
@@ -184,7 +184,7 @@ peg::parser! { grammar okolang() for str {
 			core::mem::replace(&mut tuple[0], Expr::UNIT_TUPLE)
 		} else {
 			Expr {
-				ty: Type::Tuple { types: tuple.iter().map(|x| x.ty.clone()).collect() },
+				ty: Type::from_kind(TypeKind::Tuple { types: tuple.iter().map(|x| x.ty.clone()).collect() }),
 				kind: ExprKind::Tuple(tuple)
 			}
 		}

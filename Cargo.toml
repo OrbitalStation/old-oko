@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 peg = "0.8.1"
+llvm-sys = "100.2.4"

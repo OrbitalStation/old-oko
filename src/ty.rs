@@ -1,14 +1,18 @@
 use core::fmt::{Debug, Formatter, Result, Write};
+use std::ffi::CString;
+use llvm::core::*;
+use llvm::prelude::*;
 use crate::*;
 
 #[derive(Debug)]
 pub struct TypeDef {
 	pub name: String,
-	pub kind: TypeKind
+	pub kind: TypeDefKind
 }
 
 #[derive(Copy, Clone)]
 pub struct TypeDefIndex {
+	/// Index of a type definition in a type list
 	pub index: usize
 }
 
@@ -22,7 +26,7 @@ impl Debug for TypeDefIndex {
 }
 
 #[derive(Debug)]
-pub enum TypeKind {
+pub enum TypeDefKind {
 	Enum {
 		variants: Vec <EnumVariant>
 	},
@@ -94,8 +98,20 @@ impl TypePointers {
 	}
 }
 
+#[derive(Eq, Clone)]
+pub struct Type {
+	pub kind: TypeKind,
+	llvm_type: Option <LLVMTypeRef>
+}
+
+impl PartialEq for Type {
+	fn eq(&self, other: &Self) -> bool {
+		self.kind.eq(&other.kind)
+	}
+}
+
 #[derive(Eq, PartialEq, Clone)]
-pub enum Type {
+pub enum TypeKind {
 	Scalar {
 		index: usize,
 		ptrs: TypePointers
@@ -105,8 +121,8 @@ pub enum Type {
 
 impl Debug for Type {
 	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
-		match self {
-			Self::Scalar {
+		match &self.kind {
+			TypeKind::Scalar {
 				index,
 				ptrs
 			} => {
@@ -116,7 +132,7 @@ impl Debug for Type {
 					TypeList::Baked(baked) => f.write_str(baked[*index].name())
 				}
 			},
-			Self::Tuple { types } => {
+			TypeKind::Tuple { types } => {
 				f.write_char('(')?;
 				for ty in types.iter().rev().skip(1).rev() {
 					ty.fmt(f)?;
@@ -135,7 +151,28 @@ impl Debug for Type {
 }
 
 impl Type {
-	pub const UNIT_TUPLE: Type = Type::Tuple { types: vec![] };
+	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
+
+	pub fn llvm_type(&self) -> LLVMTypeRef {
+		if let Some(ty) = self.llvm_type {
+			return ty
+		}
+
+		match &self.kind {
+			TypeKind::Scalar { index, ptrs } => {
+				let mut ty = match Self::type_list() {
+					TypeList::Baked(baked) => baked[*index].llvm_type,
+					TypeList::Raw(_) => unimplemented!()
+				};
+				for _ in 0..ptrs.len {
+					// No distinction between mutable and const pointers
+					ty = unsafe { LLVMPointerType(ty, 0) }
+				}
+				ty
+			},
+			_ => todo!()
+		}
+	}
 
 	pub fn type_list() -> &'static mut TypeList {
 		static mut TYPE_LIST: TypeList = TypeList::Raw(vec![]);
@@ -150,14 +187,14 @@ impl Type {
 	}
 
 	pub fn as_scalar_index(&self) -> usize {
-		match self {
-			Self::Scalar { index, .. } => *index,
+		match &self.kind {
+			TypeKind::Scalar { index, .. } => *index,
 			_ => unimplemented!()
 		}
 	}
 
 	pub fn meet_new_raw_scalar(ptrs: &str, name: String, typedef: Option <TypeDef>) -> Self {
-		Self::Scalar {
+		Self::from_kind(TypeKind::Scalar {
 			index: match Self::raw().iter_mut().enumerate().find(|(_, ty)| ty.name() == name) {
 				Some((idx, ty)) => {
 					if let Some(typedef) = typedef {
@@ -178,35 +215,73 @@ impl Type {
 				}
 			},
 			ptrs: TypePointers::from(ptrs)
+		})
+	}
+
+	pub const fn from_kind(kind: TypeKind) -> Self {
+		Self {
+			kind,
+			llvm_type: None
 		}
 	}
 }
 
+#[derive(Debug)]
 pub enum TypeList {
 	Raw(Vec <RawType>),
 	Baked(Vec <BakedType>)
 }
 
 #[derive(Debug)]
-pub enum BakedType {
-	Builtin(usize),
-	Ordinary(TypeDef)
+pub struct BakedType {
+	pub kind: BakedTypeKind,
+	pub llvm_type: LLVMTypeRef
 }
 
 impl BakedType {
+	pub const STUB: BakedType = BakedType {
+		kind: BakedTypeKind::Builtin(0),
+		llvm_type: core::ptr::null_mut()
+	};
+
+	pub fn builtin(idx: usize) -> Self {
+		let llvm_type = unsafe { (BUILTIN_TYPES[idx].llvm_create)(llvm_context()) };
+
+		Self {
+			kind: BakedTypeKind::Builtin(idx),
+			llvm_type
+		}
+	}
+
+	pub fn ordinary(td: TypeDef) -> Self {
+		let name = CString::new(td.name.as_str()).unwrap();
+		let llvm_type = unsafe { LLVMStructCreateNamed(llvm_context(), name.as_ptr()) };
+
+		Self {
+			kind: BakedTypeKind::Ordinary(td),
+			llvm_type
+		}
+	}
+
 	pub fn name(&self) -> &str {
-		match self {
-			Self::Builtin(builtin) => BUILTIN_TYPES[*builtin].name,
-			Self::Ordinary(ord) => &ord.name
+		match &self.kind {
+			BakedTypeKind::Builtin(builtin) => BUILTIN_TYPES[*builtin].name,
+			BakedTypeKind::Ordinary(ord) => &ord.name
 		}
 	}
 
 	pub fn as_ordinary(&self) -> &TypeDef {
-		match self {
-			Self::Ordinary(x) => x,
+		match &self.kind {
+			BakedTypeKind::Ordinary(x) => x,
 			_ => unimplemented!()
 		}
 	}
+}
+
+#[derive(Debug)]
+pub enum BakedTypeKind {
+	Builtin(usize),
+	Ordinary(TypeDef)
 }
 
 #[derive(Debug)]

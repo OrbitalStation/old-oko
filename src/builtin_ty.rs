@@ -1,8 +1,12 @@
+use llvm::prelude::*;
+use llvm::core::*;
+
 macro_rules! define {
-    ($vis:vis const $name:ident = [ $( $expr:expr ),* ]) => {
-        $vis const $name: [BuiltinType; define!(@count $(($expr))*)] = [$(
+    ($vis:vis const $name:ident = [ $( $ty:literal $llvm_create_fn:ident),* ]) => {
+        $vis const $name: [BuiltinType; define!(@count $(($ty))*)] = [$(
             BuiltinType {
-				name: $expr
+				name: $ty,
+				llvm_create: $llvm_create_fn
 			}
         ),*];
     };
@@ -17,10 +21,11 @@ macro_rules! define {
 }
 
 define!(pub const BUILTIN_TYPES = [
-	"u8",
-	"i32"
+	"u8" LLVMInt8TypeInContext,
+	"i32" LLVMInt32TypeInContext
 ]);
 
 pub struct BuiltinType {
-	pub name: &'static str
+	pub name: &'static str,
+	pub llvm_create: unsafe extern "C" fn(LLVMContextRef) -> LLVMTypeRef
 }
