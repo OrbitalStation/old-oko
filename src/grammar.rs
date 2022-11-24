@@ -234,33 +234,49 @@ peg::parser! { grammar okolang() for str {
 	rule __fun_ret_ty() -> Type
 		= _ "->" _ ty:ty() { ty }
 
-	rule fun_definition() -> FunDef
-		= name:ident() _ args:fundef_args() ret_ty:__fun_ret_ty()? body:fundef_body()
-	{
-		let (is_simple, lines) = body;
+	rule __fun_or_extern_fun_definition_cont() -> Option <(bool, Vec <String>)>
+		= _ "=" _ "extern" nl() { None }
+		/ body:fundef_body() { Some(body) }
 
-		FunDef {
-			name,
-			overloads: vec![FunDefOverloadablePart {
-				args,
-				body: FunBody::Raw { lines },
+	rule fun_or_extern_fun_definition() -> Stmt
+		= name:ident() _ args:fundef_args() ret_ty:__fun_ret_ty()? body:__fun_or_extern_fun_definition_cont()
+	{
+		match body {
+			None => Stmt::ExternFun(ExternFun {
+				name,
+				args: args.into_iter().map(|arg| arg.ty).collect(),
 				ret_ty: match ret_ty {
-					None if is_simple => FunRetType::Undetermined,
-					None => FunRetType::Determined(Type::UNIT_TUPLE),
-					Some(ty) => FunRetType::Determined(ty)
-				},
-				is_simple
-			}]
+					None => Type::UNIT_TUPLE,
+					Some(ty) => ty
+				}
+			}),
+			Some(body) => {
+				let (is_simple, lines) = body;
+
+				Stmt::FunDef(FunDef {
+					name,
+					overloads: vec![FunDefOverloadablePart {
+						args,
+						body: FunBody::Raw { lines },
+						ret_ty: match ret_ty {
+							None if is_simple => FunRetType::Undetermined,
+							None => FunRetType::Determined(Type::UNIT_TUPLE),
+							Some(ty) => FunRetType::Determined(ty)
+						},
+						is_simple
+					}]
+				})
+			}
 		}
 	}
 
 	rule stmt() -> Stmt
 		= x:type_definition() { Stmt::TypeDef(x) }
-		/ x:fun_definition() { Stmt::FunDef(x) }
-
-	/* PUBLIC SECTION */
+		/ x:fun_or_extern_fun_definition() { x }
 
 	rule __global_whitespace() = quiet!{[' ' | '\n' | '\t']*}
+
+	/* PUBLIC SECTION */
 
 	pub rule parse_raw_oko_code() -> Vec <Stmt>
 		= __global_whitespace() stmts:(stmt() ** __global_whitespace()) __global_whitespace()

@@ -67,3 +67,7 @@ drop x: T
 * `*T` -> a constant pointer to the `T`
 * `^T` -> a mutable pointer to the `T`
 * `(X, Y, Z, ...)` -> a tuple of types
+
+## Extern function definition
+
+`puts str: *u8 -> i32 = extern`

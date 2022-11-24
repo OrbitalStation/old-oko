@@ -1,26 +1,6 @@
 * A typical boolean type
 ty bool = yes | no
 
-* Rust's `Option` type
-ty optional = None | Some T
-
-ty bool2
-	true
-	false
-
-ty doublebool = v1: bool + v2: bool2
-
-ty Filter
-	iter: bool
-	pred: bool2
-	_extra1 _extra2: void
-
 pass = ()
 
-identity x: bool = x
-
-identity x: () = x
-
-add x y: bool = pass
-
-drop x: bool = x
+puts str: *u8 -> i32 = extern
