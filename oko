@@ -1,0 +1,160 @@
+* IDE-based
+* Aims at improving the productivity of a programmer
+* Little to no boilerplate
+* Short and clear syntax
+
+* Single line comment
+
+* Enum of values `None` and `Some` containing some value
+ty optional = None | Some T
+-- OR --
+ty optional
+	None
+	Some T
+
+isNone x: optional T = choose x
+	None => true
+	Some ... => false
+
+isSome x: optional T = !isNone x
+
+map x: optional T, mutator: λT -> U = choose x
+	None => None
+	Some value => Some mutator value
+
+ty result = Ok T | Err E
+
+or x: result T E, pred: λE -> T = choose x
+	Ok value => value
+	Err error => pred error
+
+* Enum of two values `yes` and `no`
+ty bool = yes | no
+
+idea Iterator
+	* Rust equivalent:
+	* fn next(&mut self) -> &E;
+	next$ -> &E
+
+	* Rust equivalent:
+	* fn isExhausted(&self) -> bool;
+	isExhausted -> bool
+
+* Each structural type automatically creates
+* 	a constructor, whose name is a decapitalized type name,
+*	i.e. `filter` in this case
+ty Filter
+	iter: I
+	pred: P
+where
+	I: Iterator ...
+	P: λI.E -> bool
+
+Filter :: Iterator I.E
+	next = loop choose next i.iter
+		Some e => if i.pred e => break Some e
+		None => break None
+		-- OR --
+		loop
+			* `?` operator is placed before an expression
+			e := ?next i.iter
+			if i.pred e => break Some e
+		-- OR --
+		* `@` operator binds a name to an expression
+		loop if i.pred (?next i.iter)@e => break Some e
+	
+	isExhausted = isExhausted i.iter
+
+* Ideas can also be shortened
+idea Add = add other: U -> R
+* This means that `U` may not be specified and
+*	would be replaced with `Y`, which is an alias
+*	to the very type that implements the idea
+where U defaultsto Y
+
+idea Default = const DEFAULT: Y
+
+sum i: I
+	$s := I.E.DEFAULT
+	for e in i do s += e
+	return s
+where
+	I: Iterator ...
+	I.E: Default + Add
+
+* `value |> func args` is equivalent to
+* `func value args`
+* This operator exists to make the code more clear
+eulerTask1 = filter 0..1000 λx: x % 3 == 0 or x % 5 == 0 |> sum |> println
+
+* Hello, world!
+println "Hello, world!"
+
+* Guessing game
+
+use std.cmp.Ordering.*
+
+println "Guess the number!"
+
+secretNumber := getRandom 1..=100
+
+loop
+	println "Please input your guess"
+
+	* That lambda ignores the error given and just
+	*	invokes `continue`
+	* `continue` has the return type of `!`, and
+	* 	`parse::u8 input` has type of `u8`,
+	*	but `or` requires for them to be equal,
+	*	so how does it work?
+	* This works because `!` type implements
+	*	implicit cast to any other type
+	guess := input |> trim |> parse::u32 |> or λ...: continue
+
+	* Inside a string literal `$` and a name following it
+	* 	inserts the value of a variable into
+	* Duplicate it to use `$` as a character - `$$`
+	println "You guessed: $guess"
+
+	choose cmp guess secretNumber
+		Less => println "Too small!"
+		Greater => println "Too big!"
+		Equal => println "You win!"
+			break
+
+* Rectangle
+
+ty Rectangle = width height: u32
+
+square size: u32 = rectangle size size
+
+area rect: Rectangle = rect.width * rect.height
+
+rect1 := rectangle 30 50
+
+println "rect1 is $rect1"
+
+* Inside a string literal `{ ... }` inserts
+*	a value of `...` inside it
+println "Area of the rect1 is {area rect1}"
+
+* Message Enum
+ty Message
+	Quit
+	Move x y: i32
+	Write string
+	ChangeColor color
+
+* Coin
+ty Coin
+	Penny
+	Nickel
+	Dime
+	Quarter
+
+valueInCents coin: Coin = choose coin
+	Penny => println "A lucky penny!"
+		1
+	Nickel => 5
+	Dime => 10
+	Quarter => 25
