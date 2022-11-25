@@ -1,4 +1,5 @@
 use std::ffi::CString;
+use llvm::analysis::*;
 use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
@@ -30,10 +31,15 @@ fn create_fundef(stmts: &[Stmt], fundef: &FunDef) {
 
 		for expr in body {
 			match expr {
-				ExprKind::Return(expr) => unsafe { LLVMBuildRet(llvm_builder(), expr.kind.to_llvm_value(stmts)); },
+				ExprKind::Return(expr) => if expr.ty == Type::UNIT_TUPLE {
+					unsafe { LLVMBuildRetVoid(llvm_builder()); }
+				} else {
+					unsafe { LLVMBuildRet(llvm_builder(), expr.kind.to_llvm_value(stmts)); }
+				},
 				_ => todo!()
 			}
 		}
+
 	}
 }
 
@@ -60,10 +66,15 @@ fn create_typedef(typedef: &TypeDefIndex) {
 }
 
 fn create_extern_fun(fun: &ExternFun) {
-	create_llvm_fun(&fun.name, fun.args.iter().map(|ty| ty.llvm_type()).collect::<Vec <_>>(), fun.ret_ty.llvm_type());
+	create_llvm_fun(&fun.name, fun.args.iter().map(|ty| ty.llvm_type()).collect::<Vec <_>>(), &fun.ret_ty);
 }
 
-pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: LLVMTypeRef) -> LLVMValueRef {
+pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: &Type) -> LLVMValueRef {
+	let ret_ty = if *ret_ty == Type::UNIT_TUPLE {
+		unsafe { LLVMVoidTypeInContext(llvm_context()) }
+	} else {
+		ret_ty.llvm_type()
+	};
 	let fun_type = unsafe { LLVMFunctionType(ret_ty, args.as_mut_ptr(), args.len() as _, 0) };
 	let name = CString::new(name).unwrap();
 	unsafe { LLVMAddFunction(llvm_module(), name.as_ptr(), fun_type) }

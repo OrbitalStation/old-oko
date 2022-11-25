@@ -29,24 +29,45 @@ impl ExprKind {
 
 	pub fn to_llvm_value(&self, stmts: &[Stmt]) -> LLVMValueRef {
 		match self {
-			Self::Variable(location) => match location {
-				ExprKindVariableLocation::FunArg {
-					fun_stmt_index,
-					fun_overload,
-					var_index
-				} => {
-					let fun = match &stmts[*fun_stmt_index] {
-						Stmt::FunDef(fun) => fun,
-						_ => unreachable!()
-					};
-					let overload = &fun.overloads[*fun_overload];
-					unsafe {  LLVMGetParam(overload.llvm_fun.unwrap(), *var_index as _) }
-				}
-			},
+			Self::Variable(location) => build_variable(location, stmts),
+			Self::Tuple(values) => build_tuple(values, stmts),
+			Self::FunCall { fun_stmt_index, fun_overload, args }
+				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts),
 			Self::Return(_) => panic!("cannot use `return` as part of an expression"),
-			_ => todo!()
 		}
 	}
+}
+
+fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt]) -> LLVMValueRef {
+	let mut values = values.iter().map(|x| x.kind.to_llvm_value(stmts)).collect::<Vec <_>>();
+	unsafe { LLVMConstStructInContext(llvm_context(), values.as_mut_ptr(), values.len() as _, 0) }
+}
+
+fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt]) -> LLVMValueRef {
+	match location {
+		ExprKindVariableLocation::FunArg {
+			fun_stmt_index,
+			fun_overload,
+			var_index
+		} => {
+			let fun = match &stmts[*fun_stmt_index] {
+				Stmt::FunDef(fun) => fun,
+				_ => unreachable!()
+			};
+			let overload = &fun.overloads[*fun_overload];
+			unsafe {  LLVMGetParam(overload.llvm_fun.unwrap(), *var_index as _) }
+		}
+	}
+}
+
+fn build_fun_call(fun_stmt_index: usize, fun_overload: usize, args: &Vec <Expr>, stmts: &[Stmt]) -> LLVMValueRef {
+	let fun = match &stmts[fun_stmt_index] {
+		Stmt::FunDef(fun) => fun,
+		_ => unreachable!()
+	};
+	let overload = &fun.overloads[fun_overload];
+	let mut args = args.iter().map(|x| x.kind.to_llvm_value(stmts)).collect::<Vec <_>>();
+	unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 }
 
 #[derive(Debug, Clone)]

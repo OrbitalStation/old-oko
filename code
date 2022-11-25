@@ -6,3 +6,7 @@ foo iter: Opaque -> Opaque = extern
 puts str: *u8 -> i32 = extern
 
 identity x: i32 = x
+
+pass = ()
+
+drop x: i32 = pass
