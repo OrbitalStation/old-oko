@@ -16,16 +16,6 @@ pub struct FunDefOverloadablePart {
 	pub llvm_fun: Option <LLVMValueRef>
 }
 
-impl FunDefOverloadablePart {
-	pub const STUB: FunDefOverloadablePart = FunDefOverloadablePart {
-		args: vec![],
-		body: FunBody::Raw { lines: vec![] },
-		ret_ty: FunRetType::Undetermined,
-		is_simple: false,
-		llvm_fun: None
-	};
-}
-
 #[derive(Debug, Clone)]
 pub struct FunArg {
 	pub name: String,

@@ -40,7 +40,8 @@ fn create_fundef(stmts: &[Stmt], fundef: &FunDef) {
 				},
 				// This builds function call and then just drops the value
 				ExprKind::FunCall { .. } => drop(expr.to_llvm_value(stmts)),
-				_ => todo!()
+				ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
+				ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement")
 			}
 		}
 
