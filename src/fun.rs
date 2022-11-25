@@ -25,7 +25,13 @@ pub struct FunArg {
 #[derive(Debug, Clone)]
 pub enum FunBody {
 	Raw { lines: Vec <String> },
-	Baked(Vec <ExprKind>)
+	Baked(Vec <FunStmt>)
+}
+
+#[derive(Debug, Clone)]
+pub enum FunStmt {
+	Expr(ExprKind),
+	Return(Box <Expr>)
 }
 
 #[derive(Debug, Clone)]

@@ -12,18 +12,19 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
                     };
 
                     let body = if overload.is_simple {
-                        let expr = parse_fun_body_line(&code[0], &input.with_fun_overload(overload_idx)).unwrap();
-                        if matches!(&expr.kind, ExprKind::Return(_)) {
-                            panic!("`return` operator is not allowed in a simple function `{}`", fun.name)
-                        }
-                        vec![Expr::ret(expr).kind]
+                        let (fun_stmt, ty) = parse_fun_body_line(&code[0], &input.with_fun_overload(overload_idx)).unwrap();
+                        let kind = match fun_stmt {
+                            FunStmt::Expr(expr) => expr,
+                            FunStmt::Return(_) => panic!("`return` operator is not allowed in a simple function `{}`", fun.name)
+                        };
+                        vec![FunStmt::Return(Box::new(Expr { kind, ty }))]
                     } else {
                         code.iter().map(|line| {
-                            let Expr { kind, ty } = parse_fun_body_line(&line, &input.with_fun_overload(overload_idx)).unwrap();
+                            let (fun_stmt, ty) = parse_fun_body_line(&line, &input.with_fun_overload(overload_idx)).unwrap();
                             if ty != Type::UNIT_TUPLE {
                                 panic!("an expression from a complex function is not of `()` type")
                             }
-                            kind
+                            fun_stmt
                         }).collect::<Vec <_>>()
                     };
 
@@ -41,7 +42,7 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
             Stmt::FunDef(fun) => for (overload_idx, body) in bodies.into_iter().enumerate() {
                 if fun.overloads[overload_idx].is_simple {
                     let ty = match &body[0] {
-                        ExprKind::Return(expr) => &expr.ty,
+                        FunStmt::Return(expr) => &expr.ty,
                         _ => unreachable!()
                     };
 

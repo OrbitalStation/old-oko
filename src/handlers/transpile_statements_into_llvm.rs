@@ -36,7 +36,7 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 
 		for i in 0..body.len() {
 			match &body[i] {
-				ExprKind::Return(expr) => {
+				FunStmt::Return(expr) => {
 					if expr.ty == Type::UNIT_TUPLE {
 						// This will insert function calls and whatever stuff
 						expr.kind.to_llvm_value(stmts);
@@ -50,10 +50,12 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 					}
 					terminated = true;
 				},
-				// This builds function call and then just drops the value
-				ExprKind::FunCall { .. } => drop(body[i].to_llvm_value(stmts)),
-				ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
-				ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement")
+				FunStmt::Expr(expr) => match expr {
+					// This builds function call and then just drops the value
+					ExprKind::FunCall { .. } => drop(expr.to_llvm_value(stmts)),
+					ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
+					ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement")
+				}
 			}
 		}
 

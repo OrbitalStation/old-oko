@@ -16,7 +16,6 @@ pub enum ExprKindVariableLocation {
 pub enum ExprKind {
 	Variable(ExprKindVariableLocation),
 	Tuple(Vec <Expr>),
-	Return(Box <Expr>),
 	FunCall {
 		fun_stmt_index: usize,
 		fun_overload: usize,
@@ -32,8 +31,7 @@ impl ExprKind {
 			Self::Variable(location) => build_variable(location, stmts),
 			Self::Tuple(values) => build_tuple(values, stmts),
 			Self::FunCall { fun_stmt_index, fun_overload, args }
-				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts),
-			Self::Return(_) => panic!("cannot use `return` as part of an expression"),
+				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts)
 		}
 	}
 }
@@ -81,11 +79,4 @@ impl Expr {
 		kind: ExprKind::UNIT_TUPLE,
 		ty: Type::UNIT_TUPLE
 	};
-
-	pub fn ret(expr: Self) -> Self {
-		Expr {
-			kind: ExprKind::Return(Box::new(expr)),
-			ty: Type::UNIT_TUPLE
-		}
-	}
 }

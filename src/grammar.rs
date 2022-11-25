@@ -181,7 +181,7 @@ peg::parser! { grammar okolang() for str {
 		x:__expr1_variable(input) { x }
 	}
 
-	rule __expr2(input: ParseFunBodyInput) -> Expr
+	rule expr(input: ParseFunBodyInput) -> Expr
 		= tuple:(__expr1(input) ** (_ "," _)) is_there_a_trailing_comma:(_ "," _)?
 	{
 		let mut tuple = tuple;
@@ -195,12 +195,12 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule __expr_get_return_val(input: ParseFunBodyInput) -> Expr
+	rule __fun_stmt_get_return_val(input: ParseFunBodyInput) -> Expr
 		= _ ![_] { Expr::UNIT_TUPLE }
-		/ __ expr:__expr2(input) { expr }
+		/ __ expr:expr(input) { expr }
 
-	rule expr(input: ParseFunBodyInput) -> Expr
-		= "return" expr:__expr_get_return_val(input)
+	rule fun_stmt(input: ParseFunBodyInput) -> (FunStmt, Type)
+		= "return" expr:__fun_stmt_get_return_val(input)
 	{
 		let fun = input.cur_fun_mut();
 		match &mut fun.overloads[input.fun_overload].ret_ty {
@@ -210,9 +210,9 @@ peg::parser! { grammar okolang() for str {
 			ret@FunRetType::Undetermined => *ret = FunRetType::Determined(expr.ty.clone())
 		}
 
-		Expr::ret(expr)
+		(FunStmt::Return(Box::new(expr)), Type::UNIT_TUPLE)
 	}
-		/ expr:__expr2(input) { expr }
+		/ expr:expr(input) { (FunStmt::Expr(expr.kind), expr.ty) }
 
 	rule fundef_arg() -> FunDefArgRuleReturn
 		= names:ident() ++ __ _ ":" _ ty:ty()
@@ -292,8 +292,8 @@ peg::parser! { grammar okolang() for str {
 		= __global_whitespace() stmts:(stmt() ** __global_whitespace()) __global_whitespace()
 	{ stmts }
 
-	pub rule parse_fun_body_line(input: ParseFunBodyInput) -> Expr
-		= expr:expr(input) { expr }
+	pub rule parse_fun_body_line(input: ParseFunBodyInput) -> (FunStmt, Type)
+		= expr:fun_stmt(input) { expr }
 
 } }
 
