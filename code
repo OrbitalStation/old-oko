@@ -9,4 +9,6 @@ identity x: i32 = x
 
 pass = ()
 
-drop x: i32 = pass
+drop x: i32
+	pass
+	return

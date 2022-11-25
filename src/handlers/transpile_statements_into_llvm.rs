@@ -32,14 +32,19 @@ fn create_fundef(stmts: &[Stmt], fundef: &FunDef) {
 		for expr in body {
 			match expr {
 				ExprKind::Return(expr) => if expr.ty == Type::UNIT_TUPLE {
+					// This will insert function calls and whatever stuff
+					expr.kind.to_llvm_value(stmts);
 					unsafe { LLVMBuildRetVoid(llvm_builder()); }
 				} else {
 					unsafe { LLVMBuildRet(llvm_builder(), expr.kind.to_llvm_value(stmts)); }
 				},
+				// This builds function call and then just drops the value
+				ExprKind::FunCall { .. } => drop(expr.to_llvm_value(stmts)),
 				_ => todo!()
 			}
 		}
 
+		unsafe { LLVMVerifyFunction(fun, LLVMVerifierFailureAction::LLVMAbortProcessAction); }
 	}
 }
 

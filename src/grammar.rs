@@ -195,8 +195,12 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
+	rule __expr_get_return_val(input: ParseFunBodyInput) -> Expr
+		= _ ![_] { Expr::UNIT_TUPLE }
+		/ __ expr:__expr2(input) { expr }
+
 	rule expr(input: ParseFunBodyInput) -> Expr
-		= "return" __ expr:__expr2(input)
+		= "return" expr:__expr_get_return_val(input)
 	{
 		let fun = input.cur_fun_mut();
 		match &mut fun.overloads[input.fun_overload].ret_ty {
