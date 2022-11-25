@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use llvm::prelude::*;
 use crate::*;
 
@@ -13,7 +14,15 @@ pub struct FunDefOverloadablePart {
 	pub body: FunBody,
 	pub ret_ty: FunRetType,
 	pub is_simple: bool,
-	pub llvm_fun: Option <LLVMValueRef>
+	pub llvm_fun: Option <LLVMValueRef>,
+	pub vals: HashMap <usize, VariableInfo>
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableInfo {
+	pub name: String,
+	pub init: Expr,
+	pub llvm_value: Option <LLVMValueRef>
 }
 
 #[derive(Debug, Clone)]
@@ -31,7 +40,8 @@ pub enum FunBody {
 #[derive(Debug, Clone)]
 pub enum FunStmt {
 	Expr(ExprKind),
-	Return(Box <Expr>)
+	Return(Box <Expr>),
+	ValDef { line: usize }
 }
 
 #[derive(Debug, Clone)]

@@ -19,7 +19,7 @@ pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 
 fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 	let FunDef { overloads, name } = fundef;
-	for FunDefOverloadablePart { body, llvm_fun, ret_ty, .. } in overloads {
+	for FunDefOverloadablePart { body, llvm_fun, ret_ty, vals, .. } in overloads {
 		let body = match body {
 			FunBody::Baked(exprs) => exprs,
 			_ => unreachable!()
@@ -55,6 +55,10 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 					ExprKind::FunCall { .. } => drop(expr.to_llvm_value(stmts)),
 					ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
 					ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement")
+				},
+				FunStmt::ValDef { line } => {
+					let v = vals.get_mut(line).unwrap();
+					v.llvm_value = Some(v.init.kind.to_llvm_value(stmts))
 				}
 			}
 		}

@@ -1,4 +1,5 @@
 use peg::RuleResult;
+use std::collections::HashMap;
 use crate::*;
 
 type TypedefStructFieldRuleReturn = impl Iterator <Item = StructField>;
@@ -121,6 +122,15 @@ peg::parser! { grammar okolang() for str {
 				}),
 				ty: arg.ty.clone()
 			}
+		} else if let Some((line, info)) = input.cur_fun().overloads[input.fun_overload].vals.iter().find(|(line, x)| **line < input.line && x.name == name) {
+			Expr {
+				kind: ExprKind::Variable(ExprKindVariableLocation::Val {
+					fun_stmt_index: input.cur_stmt,
+					fun_overload: input.fun_overload,
+					line_def: *line
+				}),
+				ty: info.init.ty.clone()
+			}
 		} else {
 			return Err("expression")
 		})
@@ -199,7 +209,7 @@ peg::parser! { grammar okolang() for str {
 		= _ ![_] { Expr::UNIT_TUPLE }
 		/ __ expr:expr(input) { expr }
 
-	rule fun_stmt(input: ParseFunBodyInput) -> (FunStmt, Type)
+	rule __fun_stmt_return(input: ParseFunBodyInput) -> (FunStmt, Type)
 		= "return" expr:__fun_stmt_get_return_val(input)
 	{
 		let fun = input.cur_fun_mut();
@@ -212,6 +222,21 @@ peg::parser! { grammar okolang() for str {
 
 		(FunStmt::Return(Box::new(expr)), Type::UNIT_TUPLE)
 	}
+
+	rule __fun_stmt_val_def(input: ParseFunBodyInput) -> (FunStmt, Type)
+		= name:ident() _ ":=" _ init:expr(input)
+	{
+		input.cur_fun_mut().overloads[input.fun_overload].vals.insert(input.line, VariableInfo {
+			name,
+			init,
+			llvm_value: None
+		});
+		(FunStmt::ValDef { line: input.line }, Type::UNIT_TUPLE)
+	}
+
+	rule fun_stmt(input: ParseFunBodyInput) -> (FunStmt, Type)
+		= ret:__fun_stmt_return(input) { ret }
+		/ val:__fun_stmt_val_def(input) { val }
 		/ expr:expr(input) { (FunStmt::Expr(expr.kind), expr.ty) }
 
 	rule fundef_arg() -> FunDefArgRuleReturn
@@ -273,7 +298,8 @@ peg::parser! { grammar okolang() for str {
 							Some(ty) => FunRetType::Determined(ty)
 						},
 						is_simple,
-						llvm_fun: None
+						llvm_fun: None,
+						vals: HashMap::new()
 					}]
 				})
 			}

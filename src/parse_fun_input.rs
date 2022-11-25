@@ -3,6 +3,7 @@ use crate::*;
 pub struct ParseFunBodyInputStruct {
 	pub cur_stmt: usize,
 	pub fun_overload: usize,
+	pub line: usize,
 	pub stmts: *mut [Stmt]
 }
 
@@ -11,14 +12,16 @@ impl ParseFunBodyInputStruct {
 		Self {
 			cur_stmt: 0,
 			fun_overload: 0,
+			line: 0,
 			stmts: stmts as *mut [Stmt]
 		}
 	}
 
-	pub fn with_fun_overload(&self, o: usize) -> Self {
+	pub fn with(&self, o: usize, line: usize) -> Self {
 		Self {
 			cur_stmt: self.cur_stmt,
 			fun_overload: o,
+			line,
 			stmts: self.stmts
 		}
 	}
@@ -68,6 +71,7 @@ impl Iterator for ParseFunBodyInputStruct {
 			Some(Self {
 				cur_stmt: self.cur_stmt - 1,
 				fun_overload: 0,
+				line: self.line,
 				stmts: unsafe { core::mem::transmute(&mut *self.stmts) }
 			})
 		}

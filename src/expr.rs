@@ -8,6 +8,11 @@ pub enum ExprKindVariableLocation {
 		fun_stmt_index: usize,
 		fun_overload: usize,
 		var_index: usize
+	},
+	Val {
+		fun_stmt_index: usize,
+		fun_overload: usize,
+		line_def: usize
 	}
 }
 
@@ -53,7 +58,19 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt]) -> LLVMVa
 				_ => unreachable!()
 			};
 			let overload = &fun.overloads[*fun_overload];
-			unsafe {  LLVMGetParam(overload.llvm_fun.unwrap(), *var_index as _) }
+			unsafe { LLVMGetParam(overload.llvm_fun.unwrap(), *var_index as _) }
+		},
+		ExprKindVariableLocation::Val {
+			fun_stmt_index,
+			fun_overload,
+			line_def
+		} => {
+			let fun = match &stmts[*fun_stmt_index] {
+				Stmt::FunDef(fun) => fun,
+				_ => unreachable!()
+			};
+			let overload = &fun.overloads[*fun_overload];
+			overload.vals.get(line_def).unwrap().llvm_value.unwrap()
 		}
 	}
 }

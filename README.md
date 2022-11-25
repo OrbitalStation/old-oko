@@ -75,3 +75,6 @@ drop x: T
 ## Extern function definition
 
 `puts str: *u8 -> i32 = extern`
+
+## Variable definition
+`x := expression`

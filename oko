@@ -12,19 +12,19 @@ ty optional
 	None
 	Some T
 
-isNone x: optional T = choose x
+isNone.& optional T = choose i
 	None => true
 	Some ... => false
 
-isSome x: optional T = !isNone x
+isSome.& optional T = !i.isNone
 
-map x: optional T, mutator: λT -> U = choose x
+map.& optional T, mutator: λT -> U = choose i
 	None => None
 	Some value => Some mutator value
 
 ty result = Ok T | Err E
 
-or x: result T E, pred: λE -> T = choose x
+or.& result T E, pred: λE -> T = choose x
 	Ok value => value
 	Err error => pred error
 
@@ -34,11 +34,11 @@ ty bool = yes | no
 idea Iterator
 	* Rust equivalent:
 	* fn next(&mut self) -> &E;
-	next$ -> &E
+	next.$ -> &E
 
 	* Rust equivalent:
 	* fn isExhausted(&self) -> bool;
-	isExhausted -> bool
+	isExhausted.& -> bool
 
 * Each structural type automatically creates
 * 	a constructor, whose name is a decapitalized type name,
@@ -51,7 +51,7 @@ where
 	P: λI.E -> bool
 
 Filter :: Iterator I.E
-	next = loop choose next i.iter
+	next.$ = loop choose next i.iter
 		Some e => if i.pred e => break Some e
 		None => break None
 		-- OR --
@@ -63,7 +63,7 @@ Filter :: Iterator I.E
 		* `@` operator binds a name to an expression
 		loop if i.pred (?next i.iter)@e => break Some e
 	
-	isExhausted = isExhausted i.iter
+	isExhausted.& = i.iter.isExhausted
 
 * Ideas can also be shortened
 idea Add = add other: U -> R
@@ -74,7 +74,8 @@ where U defaultsto Y
 
 idea Default = const DEFAULT: Y
 
-sum i: I
+* Rust analogue: fn sum(self) -> I::E
+sum.! I -> I.E
 	$s := I.E.DEFAULT
 	for e in i do s += e
 	return s
@@ -128,7 +129,7 @@ ty Rectangle = width height: u32
 
 square size: u32 = rectangle size size
 
-area rect: Rectangle = rect.width * rect.height
+area.& Rectangle = i.width * i.height
 
 rect1 := rectangle 30 50
 

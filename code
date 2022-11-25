@@ -5,7 +5,10 @@ foo x: Opaque -> Opaque = extern
 
 puts str: *u8 -> i32 = extern
 
-identity x: i32 = x
+identity x: i32 -> i32
+	y := x
+	return y
+
 
 pass = ()
 

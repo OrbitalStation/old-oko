@@ -12,15 +12,16 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
                     };
 
                     let body = if overload.is_simple {
-                        let (fun_stmt, ty) = parse_fun_body_line(&code[0], &input.with_fun_overload(overload_idx)).unwrap();
+                        let (fun_stmt, ty) = parse_fun_body_line(&code[0], &input.with(overload_idx, 0)).unwrap();
                         let kind = match fun_stmt {
                             FunStmt::Expr(expr) => expr,
-                            FunStmt::Return(_) => panic!("`return` operator is not allowed in a simple function `{}`", fun.name)
+                            FunStmt::Return(_) => panic!("`return` operator is not allowed in a simple function `{}`", fun.name),
+                            FunStmt::ValDef { .. } => panic!("variable definition is not allowed in a simple function `{}`", fun.name)
                         };
                         vec![FunStmt::Return(Box::new(Expr { kind, ty }))]
                     } else {
-                        code.iter().map(|line| {
-                            let (fun_stmt, ty) = parse_fun_body_line(&line, &input.with_fun_overload(overload_idx)).unwrap();
+                        code.iter().enumerate().map(|(idx, line)| {
+                            let (fun_stmt, ty) = parse_fun_body_line(&line, &input.with(overload_idx, idx)).unwrap();
                             if ty != Type::UNIT_TUPLE {
                                 panic!("an expression from a complex function is not of `()` type")
                             }
@@ -64,7 +65,7 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
                 let ret_ty = fun.overloads[overload_idx].ret_ty.as_determined();
 
                 fun.overloads[overload_idx].llvm_fun = Some(create_llvm_fun(&overload_name, args, ret_ty));
-                fun.overloads[overload_idx].body = FunBody::Baked(body)
+                fun.overloads[overload_idx].body = FunBody::Baked(body);
             },
             _ => unreachable!()
         }
