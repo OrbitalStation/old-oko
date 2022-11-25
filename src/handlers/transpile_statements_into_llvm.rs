@@ -4,44 +4,64 @@ use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
 
-pub fn transpile_statements_into_llvm(stmts: &[Stmt]) {
+pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
+	let stmts_ref = &*stmts as *const [Stmt];
 	for stmt in stmts {
 		match stmt {
 			Stmt::ExternFun(fun) => create_extern_fun(fun),
 			Stmt::TypeDef(typedef) => create_typedef(typedef),
-			Stmt::FunDef(fundef) => create_fundef(stmts, fundef),
+			Stmt::FunDef(fundef) => create_fundef(unsafe { &*stmts_ref }, fundef),
 
 			Stmt::Stub => unreachable!()
 		}
 	}
 }
 
-fn create_fundef(stmts: &[Stmt], fundef: &FunDef) {
-	let FunDef { overloads, .. } = fundef;
-	for FunDefOverloadablePart { body, llvm_fun, .. } in overloads {
+fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
+	let FunDef { overloads, name } = fundef;
+	for FunDefOverloadablePart { body, llvm_fun, ret_ty, .. } in overloads {
 		let body = match body {
 			FunBody::Baked(exprs) => exprs,
 			_ => unreachable!()
 		};
+
+		let ret_ty = ret_ty.as_determined();
 
 		let fun = llvm_fun.unwrap();
 
 		let bb = unsafe { LLVMAppendBasicBlockInContext(llvm_context(), fun, b"entry\0".as_ptr() as *const _) };
 		unsafe { LLVMPositionBuilderAtEnd(llvm_builder(), bb) }
 
-		for expr in body {
-			match expr {
-				ExprKind::Return(expr) => if expr.ty == Type::UNIT_TUPLE {
-					// This will insert function calls and whatever stuff
-					expr.kind.to_llvm_value(stmts);
-					unsafe { LLVMBuildRetVoid(llvm_builder()); }
-				} else {
-					unsafe { LLVMBuildRet(llvm_builder(), expr.kind.to_llvm_value(stmts)); }
+		let mut terminated = false;
+
+		for i in 0..body.len() {
+			match &body[i] {
+				ExprKind::Return(expr) => {
+					if expr.ty == Type::UNIT_TUPLE {
+						// This will insert function calls and whatever stuff
+						expr.kind.to_llvm_value(stmts);
+						unsafe { LLVMBuildRetVoid(llvm_builder()); }
+					} else {
+						unsafe { LLVMBuildRet(llvm_builder(), expr.kind.to_llvm_value(stmts)); }
+					}
+					if i + 1 < body.len() {
+						println!("WARNING: some statements in function `{name}` are unreachable");
+						body.drain(i + 1..);
+					}
+					terminated = true;
 				},
 				// This builds function call and then just drops the value
-				ExprKind::FunCall { .. } => drop(expr.to_llvm_value(stmts)),
+				ExprKind::FunCall { .. } => drop(body[i].to_llvm_value(stmts)),
 				ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
 				ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement")
+			}
+		}
+
+		if !terminated {
+			if *ret_ty == Type::UNIT_TUPLE {
+				unsafe { LLVMBuildRetVoid(llvm_builder()); }
+			} else {
+				panic!("return statement is missing from function `{name}`")
 			}
 		}
 

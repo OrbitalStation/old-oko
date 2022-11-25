@@ -17,9 +17,7 @@ fn main() {
 
     parse_body_in_each_function(&mut stmts);
 
-    analyze_control_flow(&mut stmts);
-
-    transpile_statements_into_llvm(&stmts);
+    transpile_statements_into_llvm(&mut stmts);
 
     unsafe { LLVMDumpModule(llvm_module()) }
 
