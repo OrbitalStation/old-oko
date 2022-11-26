@@ -39,10 +39,10 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 				FunStmt::Return(expr) => {
 					if expr.ty == Type::UNIT_TUPLE {
 						// This will insert function calls and whatever stuff
-						expr.kind.to_llvm_value(stmts);
+						expr.to_llvm_value(stmts);
 						unsafe { LLVMBuildRetVoid(llvm_builder()); }
 					} else {
-						unsafe { LLVMBuildRet(llvm_builder(), expr.kind.to_llvm_value(stmts)); }
+						unsafe { LLVMBuildRet(llvm_builder(), expr.to_llvm_value(stmts)); }
 					}
 					if i + 1 < body.len() {
 						println!("WARNING: some statements in function `{name}` are unreachable");
@@ -52,14 +52,18 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 				},
 				FunStmt::Expr(expr) => match expr {
 					// This builds function call and then just drops the value
-					ExprKind::FunCall { .. } => drop(expr.to_llvm_value(stmts)),
+					ExprKind::FunCall { .. } => drop(Expr {
+						ty: Type::UNIT_TUPLE,
+						kind: expr.clone()
+					}.to_llvm_value(stmts)),
 					ExprKind::BinOp { .. } => panic!("binary operator is not allowed as a function statement"),
 					ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
-					ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement")
+					ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement"),
+					ExprKind::Literal(_) => panic!("literal is not allowed as a function statement")
 				},
 				FunStmt::ValDef { line } => {
 					let v = vals.get_mut(line).unwrap();
-					v.llvm_value = Some(v.init.kind.to_llvm_value(stmts))
+					v.llvm_value = Some(v.init.to_llvm_value(stmts))
 				}
 			}
 		}

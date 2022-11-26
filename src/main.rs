@@ -19,43 +19,9 @@ fn main() {
 
     transpile_statements_into_llvm(&mut stmts);
 
-    unsafe { LLVMDumpModule(llvm_module()) }
+    unsafe { llvm_sys::core::LLVMDumpModule(llvm_module()) }
 
     drop_llvm_builder();
     drop_llvm_module();
     drop_llvm_context();
-}
-
-use llvm::core::*;
-use core::ptr::null_mut;
-use std::ffi::CString;
-
-#[allow(dead_code)]
-unsafe fn codegen(input: &str) {
-    let context = LLVMContextCreate();
-    let module = LLVMModuleCreateWithName(b"example_module\0".as_ptr() as *const _);
-    let builder = LLVMCreateBuilderInContext(context);
-
-    // In LLVM, you get your types from functions.
-    let int_type = LLVMInt64TypeInContext(context);
-    let function_type = LLVMFunctionType(int_type, null_mut(), 0, 0);
-    let function = LLVMAddFunction(module, b"main\0".as_ptr() as *const _, function_type);
-
-    let entry_name = CString::new("entry").unwrap();
-    let bb = LLVMAppendBasicBlockInContext(context, function, entry_name.as_ptr());
-    LLVMPositionBuilderAtEnd(builder, bb);
-
-    // The juicy part: construct a `LLVMValue` from a Rust value:
-    let int_value: u64 = input.parse().unwrap();
-    let int_value = LLVMConstInt(int_type, int_value, 0);
-
-    LLVMBuildRet(builder, int_value);
-
-    // Instead of dumping to stdout, let's write out the IR to `out.ll`
-    let out_file = CString::new("out.ll").unwrap();
-    LLVMPrintModuleToFile(module, out_file.as_ptr(), null_mut());
-
-    LLVMDisposeBuilder(builder);
-    LLVMDisposeModule(module);
-    LLVMContextDispose(context);
 }

@@ -15,8 +15,8 @@ macro_rules! open_option_in_arg {
 	}
 }
 
-fn check2arithmetic(x: Expr, y: Expr, op: BinOpType) -> Expr {
-	assert_eq!(x.ty, y.ty, "cannot apply `{:?}` to different types", op);
+fn check2arithmetic(mut x: Expr, mut y: Expr, op: BinOpType) -> Expr {
+	assert!(x.ty.eq_implicit(&mut y.ty, Some(&mut x.kind), Some(&mut y.kind)), "cannot apply `{:?}` to different types", op);
 	assert!(x.ty.is_arithmetic(), "cannot apply `{:?}` to non-arithmetic types", op);
 	let ty = x.ty.clone();
 	Expr {
@@ -25,7 +25,7 @@ fn check2arithmetic(x: Expr, y: Expr, op: BinOpType) -> Expr {
 			right: Box::new(y),
 			op,
 		},
-		ty,
+		ty
 	}
 }
 
@@ -201,6 +201,16 @@ peg::parser! { grammar okolang() for str {
 		= (__ op() __) {}
 		/ op() {}
 
+	rule __expr1_literal() -> Expr
+		= x:$(digit()+)
+	{
+		let x = x.parse().unwrap();
+		Expr {
+			kind: ExprKind::Literal(ExprLiteral::Integer(x)),
+			ty: Type::from_kind(TypeKind::Integer)
+		}
+	}
+
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
 		x:(@) __expr1_bin_op(<"+">, input) y:@ { check2arithmetic(x, y, BinOpType::Add) }
 		x:(@) __expr1_bin_op(<"-">, input) y:@ { check2arithmetic(x, y, BinOpType::Sub) }
@@ -213,6 +223,7 @@ peg::parser! { grammar okolang() for str {
 		"(" _ ")" { Expr::UNIT_TUPLE }
 		"(" _ x:expr(input) _ ")" { x }
 		x:__expr1_variable(input) { x }
+		x:__expr1_literal() { x }
 	}
 
 	rule expr(input: ParseFunBodyInput) -> Expr
@@ -237,11 +248,19 @@ peg::parser! { grammar okolang() for str {
 		= "return" expr:__fun_stmt_get_return_val(input)
 	{
 		let fun = input.cur_fun_mut();
+		let mut expr = expr;
 		match &mut fun.overloads[input.fun_overload].ret_ty {
 			FunRetType::Determined(ret) => if expr.ty != *ret {
-				panic!("return type mismatch in function `{}`", fun.name)
+				if !expr.ty.try_implicitly_convert(ret, Some(&mut expr.kind)) {
+					panic!("return type mismatch in function `{}`", fun.name)
+				}
 			},
-			ret@FunRetType::Undetermined => *ret = FunRetType::Determined(expr.ty.clone())
+			ret@FunRetType::Undetermined => {
+				if matches!(expr.ty.kind, TypeKind::Integer) {
+					expr.ty.try_implicitly_convert(&Type::get_builtin("i32"), Some(&mut expr.kind));
+				}
+				*ret = FunRetType::Determined(expr.ty.clone())
+			}
 		}
 
 		(FunStmt::Return(Box::new(expr)), Type::UNIT_TUPLE)

@@ -37,11 +37,18 @@ impl Debug for BinOpType {
 	}
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ExprLiteral {
+	Integer(i128)
+}
+
 #[derive(Debug, Clone)]
 #[repr(u8)]
 pub enum ExprKind {
 	Variable(ExprKindVariableLocation),
 	Tuple(Vec <Expr>),
+	Literal(ExprLiteral),
 	FunCall {
 		fun_stmt_index: usize,
 		fun_overload: usize,
@@ -56,22 +63,17 @@ pub enum ExprKind {
 
 impl ExprKind {
 	pub const UNIT_TUPLE: ExprKind = ExprKind::Tuple(vec![]);
+}
 
-	pub fn to_llvm_value(&self, stmts: &[Stmt]) -> LLVMValueRef {
-		match self {
-			Self::Variable(location) => build_variable(location, stmts),
-			Self::Tuple(values) => build_tuple(values, stmts),
-			Self::FunCall { fun_stmt_index, fun_overload, args }
-				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts),
-			Self::BinOp { left, right, op }
-				=> build_bin_op(left, right, *op, stmts)
-		}
+fn build_literal(lit: &ExprLiteral, ty: &Type) -> LLVMValueRef {
+	match lit {
+		ExprLiteral::Integer(int) => unsafe { LLVMConstInt(ty.llvm_type(), core::mem::transmute(*int as i64), (*int > 0) as _)}
 	}
 }
 
 fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt]) -> LLVMValueRef {
-	let left = left0.kind.to_llvm_value(stmts);
-	let right = right0.kind.to_llvm_value(stmts);
+	let left = left0.to_llvm_value(stmts);
+	let right = right0.to_llvm_value(stmts);
 	let name = b"\0".as_ptr() as _;
 	unsafe {
 		match op {
@@ -91,7 +93,7 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt]) -> L
 
 fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt]) -> LLVMValueRef {
 	// TODO Rework!
-	let mut values = values.iter().map(|x| x.kind.to_llvm_value(stmts)).collect::<Vec <_>>();
+	let mut values = values.iter().map(|x| x.to_llvm_value(stmts)).collect::<Vec <_>>();
 	unsafe { LLVMConstStructInContext(llvm_context(), values.as_mut_ptr(), values.len() as _, 0) }
 }
 
@@ -130,7 +132,7 @@ fn build_fun_call(fun_stmt_index: usize, fun_overload: usize, args: &Vec <Expr>,
 		_ => unreachable!()
 	};
 	let overload = &fun.overloads[fun_overload];
-	let mut args = args.iter().map(|x| x.kind.to_llvm_value(stmts)).collect::<Vec <_>>();
+	let mut args = args.iter().map(|x| x.to_llvm_value(stmts)).collect::<Vec <_>>();
 	unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 }
 
@@ -145,4 +147,16 @@ impl Expr {
 		kind: ExprKind::UNIT_TUPLE,
 		ty: Type::UNIT_TUPLE
 	};
+
+	pub fn to_llvm_value(&self, stmts: &[Stmt]) -> LLVMValueRef {
+		match &self.kind {
+			ExprKind::Variable(location) => build_variable(location, stmts),
+			ExprKind::Tuple(values) => build_tuple(values, stmts),
+			ExprKind::FunCall { fun_stmt_index, fun_overload, args }
+				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts),
+			ExprKind::BinOp { left, right, op }
+				=> build_bin_op(left, right, *op, stmts),
+			ExprKind::Literal(lit) => build_literal(lit, &self.ty)
+		}
+	}
 }

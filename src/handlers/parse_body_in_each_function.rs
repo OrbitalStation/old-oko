@@ -12,13 +12,8 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
                     };
 
                     let body = if overload.is_simple {
-                        let (fun_stmt, ty) = parse_fun_body_line(&code[0], &input.with(overload_idx, 0)).unwrap();
-                        let kind = match fun_stmt {
-                            FunStmt::Expr(expr) => expr,
-                            FunStmt::Return(_) => panic!("`return` operator is not allowed in a simple function `{}`", fun.name),
-                            FunStmt::ValDef { .. } => panic!("variable definition is not allowed in a simple function `{}`", fun.name)
-                        };
-                        vec![FunStmt::Return(Box::new(Expr { kind, ty }))]
+                        let (fun_stmt, _) = parse_fun_body_line(&format!("return {}", code[0]), &input.with(overload_idx, 0)).unwrap();
+                        vec![fun_stmt]
                     } else {
                         code.iter().enumerate().map(|(idx, line)| {
                             let (fun_stmt, ty) = parse_fun_body_line(&line, &input.with(overload_idx, idx)).unwrap();

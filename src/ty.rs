@@ -118,7 +118,8 @@ pub enum TypeKind {
 		index: usize,
 		ptrs: TypePointers
 	},
-	Tuple { types: Vec <Type> }
+	Tuple { types: Vec <Type> },
+	Integer
 }
 
 impl Debug for Type {
@@ -147,13 +148,67 @@ impl Debug for Type {
 					}
 				}
 				f.write_char(')')
-			}
+			},
+			TypeKind::Integer => f.write_str("{{integer}}")
 		}
 	}
 }
 
 impl Type {
 	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
+
+	pub fn get_builtin(name: &str) -> Self {
+		match Self::type_list() {
+			TypeList::Baked(baked) => {
+				Self::from_kind(TypeKind::Scalar {
+					index: baked.iter().enumerate().find(|(_, x)| x.name() == name).unwrap().0,
+					ptrs: TypePointers {
+						len: 0,
+						muts: 0
+					},
+				})
+			},
+			_ => unimplemented!()
+		}
+	}
+
+	pub fn eq_implicit(&mut self, other: &mut Self, expr1: Option <&mut ExprKind>, expr2: Option <&mut ExprKind>) -> bool {
+		if self == other {
+			return true
+		}
+
+		if !self.try_implicitly_convert(other, expr1) {
+			other.try_implicitly_convert(self, expr2);
+		}
+
+		self == other
+	}
+
+	pub fn try_implicitly_convert(&mut self, other: &Self, expr: Option <&mut ExprKind>) -> bool {
+		if !other.is_signed() && !other.is_unsigned() {
+			return false
+		}
+
+		match &self.kind {
+			TypeKind::Integer => match &other.kind {
+				TypeKind::Integer => false,
+				_ => {
+					*self = other.clone();
+					if let Some(expr) = expr {
+						match expr {
+							ExprKind::BinOp { left, right, .. } => {
+								left.ty.try_implicitly_convert(other, Some(&mut left.kind));
+								right.ty.try_implicitly_convert(other, Some(&mut right.kind));
+							},
+							_ => ()
+						}
+					}
+					true
+				}
+			},
+			_ => false
+		}
+	}
 
 	fn __is_builtin_smth(&self, f: for <'a> fn(&'a BuiltinTypeKind) -> bool) -> bool {
 		match &self.kind {
@@ -181,7 +236,7 @@ impl Type {
 	}
 
 	pub fn is_arithmetic(&self) -> bool {
-		self.is_signed() || self.is_unsigned()
+		self.is_signed() || self.is_unsigned() || matches!(self.kind, TypeKind::Integer)
 	}
 
 	pub fn llvm_type(&self) -> LLVMTypeRef {
@@ -204,7 +259,8 @@ impl Type {
 			TypeKind::Tuple { types } => {
 				let mut types = types.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
 				unsafe { LLVMStructType(types.as_mut_ptr(), types.len() as _, 0) }
-			}
+			},
+			TypeKind::Integer => Self::get_builtin("i32").llvm_type()
 		}
 	}
 
