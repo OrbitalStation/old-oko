@@ -155,6 +155,35 @@ impl Debug for Type {
 impl Type {
 	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
 
+	fn __is_builtin_smth(&self, f: for <'a> fn(&'a BuiltinTypeKind) -> bool) -> bool {
+		match &self.kind {
+			TypeKind::Scalar { index, ptrs } => if ptrs.len != 0 {
+				false
+			} else {
+				match Self::type_list() {
+					TypeList::Baked(baked) => match &baked[*index].kind {
+						BakedTypeKind::Builtin(idx) => f(&BUILTIN_TYPES[*idx].kind),
+						_ => false
+					},
+					_ => unimplemented!()
+				}
+			},
+			_ => false
+		}
+	}
+
+	pub fn is_signed(&self) -> bool {
+		self.__is_builtin_smth(|x| matches!(x, BuiltinTypeKind::Signed))
+	}
+
+	pub fn is_unsigned(&self) -> bool {
+		self.__is_builtin_smth(|x| matches!(x, BuiltinTypeKind::Unsigned))
+	}
+
+	pub fn is_arithmetic(&self) -> bool {
+		self.is_signed() || self.is_unsigned()
+	}
+
 	pub fn llvm_type(&self) -> LLVMTypeRef {
 		if let Some(ty) = self.llvm_type {
 			return ty

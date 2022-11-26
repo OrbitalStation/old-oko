@@ -1,6 +1,7 @@
 use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
+use core::fmt::{Debug, Formatter, Write, Result};
 
 #[derive(Debug, Clone)]
 pub enum ExprKindVariableLocation {
@@ -16,6 +17,26 @@ pub enum ExprKindVariableLocation {
 	}
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+#[repr(u8)]
+pub enum BinOpType {
+	Add,
+	Sub,
+	Mul,
+	Div
+}
+
+impl Debug for BinOpType {
+	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
+		f.write_char(match self {
+			Self::Add => '+',
+			Self::Sub => '-',
+			Self::Mul => '*',
+			Self::Div => '/'
+		})
+	}
+}
+
 #[derive(Debug, Clone)]
 #[repr(u8)]
 pub enum ExprKind {
@@ -25,6 +46,11 @@ pub enum ExprKind {
 		fun_stmt_index: usize,
 		fun_overload: usize,
 		args: Vec <Expr>
+	},
+	BinOp {
+		left: Box <Expr>,
+		right: Box <Expr>,
+		op: BinOpType
 	}
 }
 
@@ -36,12 +62,35 @@ impl ExprKind {
 			Self::Variable(location) => build_variable(location, stmts),
 			Self::Tuple(values) => build_tuple(values, stmts),
 			Self::FunCall { fun_stmt_index, fun_overload, args }
-				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts)
+				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts),
+			Self::BinOp { left, right, op }
+				=> build_bin_op(left, right, *op, stmts)
+		}
+	}
+}
+
+fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt]) -> LLVMValueRef {
+	let left = left0.kind.to_llvm_value(stmts);
+	let right = right0.kind.to_llvm_value(stmts);
+	let name = b"\0".as_ptr() as _;
+	unsafe {
+		match op {
+			BinOpType::Add => LLVMBuildAdd(llvm_builder(), left, right, name),
+			BinOpType::Sub => LLVMBuildSub(llvm_builder(), left, right, name),
+			BinOpType::Mul => LLVMBuildMul(llvm_builder(), left, right, name),
+			BinOpType::Div => if left0.ty.is_signed() {
+				LLVMBuildSDiv(llvm_builder(), left, right, name)
+			} else if left0.ty.is_unsigned() {
+				LLVMBuildUDiv(llvm_builder(), left, right, name)
+			} else {
+				panic!("bad operand for division")
+			},
 		}
 	}
 }
 
 fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt]) -> LLVMValueRef {
+	// TODO Rework!
 	let mut values = values.iter().map(|x| x.kind.to_llvm_value(stmts)).collect::<Vec <_>>();
 	unsafe { LLVMConstStructInContext(llvm_context(), values.as_mut_ptr(), values.len() as _, 0) }
 }

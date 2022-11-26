@@ -5,12 +5,10 @@ foo x: Opaque -> Opaque = extern
 
 puts str: *u8 -> i32 = extern
 
-identity x: i32 -> i32
-	y := x
-	return y
-
+identity x: i32 -> i32 = x
 
 pass = ()
 
-drop x: i32
-	pass
+drop x: i32 = pass
+
+add x y z: i32 = x / (identity z) + y * x

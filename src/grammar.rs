@@ -15,6 +15,20 @@ macro_rules! open_option_in_arg {
 	}
 }
 
+fn check2arithmetic(x: Expr, y: Expr, op: BinOpType) -> Expr {
+	assert_eq!(x.ty, y.ty, "cannot apply `{:?}` to different types", op);
+	assert!(x.ty.is_arithmetic(), "cannot apply `{:?}` to non-arithmetic types", op);
+	let ty = x.ty.clone();
+	Expr {
+		kind: ExprKind::BinOp {
+			left: Box::new(x),
+			right: Box::new(y),
+			op,
+		},
+		ty,
+	}
+}
+
 peg::parser! { grammar okolang() for str {
 
 	rule __whitespace_single() = quiet!{[' ' | '\t']}
@@ -183,7 +197,17 @@ peg::parser! { grammar okolang() for str {
 		panic!("no matching overload for function call of `{}` in function `{}`", fun.name, input.cur_fun().name)
 	}
 
+	rule __expr1_bin_op <T> (op: rule <T>, input: ParseFunBodyInput)
+		= (__ op() __) {}
+		/ op() {}
+
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
+		x:(@) __expr1_bin_op(<"+">, input) y:@ { check2arithmetic(x, y, BinOpType::Add) }
+		x:(@) __expr1_bin_op(<"-">, input) y:@ { check2arithmetic(x, y, BinOpType::Sub) }
+		--
+		x:(@) __expr1_bin_op(<"*">, input) y:@ { check2arithmetic(x, y, BinOpType::Mul) }
+		x:(@) __expr1_bin_op(<"/">, input) y:@ { check2arithmetic(x, y, BinOpType::Div) }
+		--
 		x:__expr1_fun_call(input) { x }
 		--
 		"(" _ ")" { Expr::UNIT_TUPLE }

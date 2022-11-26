@@ -53,6 +53,7 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 				FunStmt::Expr(expr) => match expr {
 					// This builds function call and then just drops the value
 					ExprKind::FunCall { .. } => drop(expr.to_llvm_value(stmts)),
+					ExprKind::BinOp { .. } => panic!("binary operator is not allowed as a function statement"),
 					ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
 					ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement")
 				},
