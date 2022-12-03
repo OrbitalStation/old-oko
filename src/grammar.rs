@@ -278,9 +278,15 @@ peg::parser! { grammar okolang() for str {
 		(FunStmt::ValDef { line: input.line }, Type::UNIT_TUPLE)
 	}
 
+	rule __fun_stmt_assign_short_assign <T> (input: ParseFunBodyInput, op: rule <T>, kind: BinOpType) -> (FunStmt, Type)
+		= lvalue:expr(input) _ op() "=" _ new:expr(input) { (FunStmt::Assignment { lvalue: lvalue.clone(), new: check2arithmetic(lvalue, new, kind) }, Type::UNIT_TUPLE) }
+
 	rule __fun_stmt_assign(input: ParseFunBodyInput) -> (FunStmt, Type)
-		= lvalue:expr(input) _ "=" _ new:expr(input)
-	{ (FunStmt::Assignment { lvalue, new }, Type::UNIT_TUPLE) }
+		= lvalue:expr(input) _ "=" _ new:expr(input) { (FunStmt::Assignment { lvalue, new }, Type::UNIT_TUPLE) }
+		/ x:__fun_stmt_assign_short_assign(input, <"+">, BinOpType::Add) { x }
+		/ x:__fun_stmt_assign_short_assign(input, <"-">, BinOpType::Sub) { x }
+		/ x:__fun_stmt_assign_short_assign(input, <"/">, BinOpType::Div) { x }
+		/ x:__fun_stmt_assign_short_assign(input, <"*">, BinOpType::Mul) { x }
 
 	rule fun_stmt(input: ParseFunBodyInput) -> (FunStmt, Type)
 		= ret:__fun_stmt_return(input) { ret }

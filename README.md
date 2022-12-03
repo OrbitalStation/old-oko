@@ -86,6 +86,10 @@ drop x: T
 `x = 3`
 `x = y + z`
 
+## Shorthand assignment
+`x += 3`
+`x -= 2`
+
 ## Binary operators
 `a + b`
 `x + y * z`
