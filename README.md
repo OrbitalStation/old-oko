@@ -92,5 +92,5 @@ drop x: T
 
 ## Binary operators
 `a + b`
-`x + y * z`
-`(x + y) / z`
+`x + y × z`
+`(x + y) ÷ z`

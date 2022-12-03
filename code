@@ -14,8 +14,8 @@ drop x: i32 = pass
 add x y: u8 -> u8
 	$c := x
 	c += y
-	c *= x
-	c /= x
+	c ×= x
+	c ÷= x
 	c -= 0
 	return c
 

@@ -18,7 +18,7 @@ fn main() {
     parse_body_in_each_function(&mut stmts);
 
     transpile_statements_into_llvm(&mut stmts);
-//TODO! Replace * with × when multiplying
+
     unsafe { llvm_sys::core::LLVMDumpModule(llvm_module()) }
 
     drop_llvm_builder();
