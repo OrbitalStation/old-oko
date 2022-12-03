@@ -1,7 +1,7 @@
-* ty Opaque = opaque
+ty Opaque = opaque
 
 * Is needed because otherwise cunning LLVM will cut `Opaque` out
-* foo x: Opaque -> Opaque = extern
+foo x: Opaque -> Opaque = extern
 
 puts str: *u8 -> i32 = extern
 
@@ -12,6 +12,7 @@ pass = ()
 drop x: i32 = pass
 
 add x y: u8 -> u8
-	return x * 2
+	$c := x + y
+	return c
 
 main = 0

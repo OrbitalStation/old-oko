@@ -92,7 +92,7 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt]) -> L
 }
 
 fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt]) -> LLVMValueRef {
-	// TODO Rework!
+	// TODO! Rework so that tuple types match
 	let mut values = values.iter().map(|x| x.to_llvm_value(stmts)).collect::<Vec <_>>();
 	unsafe { LLVMConstStructInContext(llvm_context(), values.as_mut_ptr(), values.len() as _, 0) }
 }
@@ -121,7 +121,13 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt]) -> LLVMVa
 				_ => unreachable!()
 			};
 			let overload = &fun.overloads[*fun_overload];
-			overload.vals.get(line_def).unwrap().llvm_value.unwrap()
+			let val = overload.vals.get(line_def).unwrap();
+			let llvm_value = val.llvm_value.unwrap();
+			if val.mutable {
+				unsafe { LLVMBuildLoad(llvm_builder(), llvm_value, b"\0".as_ptr() as _) }
+			} else {
+				llvm_value
+			}
 		}
 	}
 }

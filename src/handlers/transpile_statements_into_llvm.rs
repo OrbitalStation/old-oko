@@ -63,7 +63,13 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 				},
 				FunStmt::ValDef { line } => {
 					let v = vals.get_mut(line).unwrap();
-					v.llvm_value = Some(v.init.to_llvm_value(stmts))
+					if v.mutable {
+						let llvm_value = unsafe { LLVMBuildAlloca(llvm_builder(), v.init.ty.llvm_type(), b"\0".as_ptr() as _) };
+						unsafe { LLVMBuildStore(llvm_builder(), v.init.to_llvm_value(stmts), llvm_value) };
+						v.llvm_value = Some(llvm_value)
+					} else {
+						v.llvm_value = Some(v.init.to_llvm_value(stmts))
+					}
 				}
 			}
 		}

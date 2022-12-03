@@ -79,6 +79,9 @@ drop x: T
 ## Variable definition
 `x := expression`
 
+## Mutable variable definition
+`$x := expression`
+
 ## Binary operators
 `a + b`
 `x + y * z`

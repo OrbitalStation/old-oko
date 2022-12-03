@@ -22,6 +22,7 @@ pub struct FunDefOverloadablePart {
 pub struct VariableInfo {
 	pub name: String,
 	pub init: Expr,
+	pub mutable: bool,
 	pub llvm_value: Option <LLVMValueRef>
 }
 

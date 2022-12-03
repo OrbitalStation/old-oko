@@ -267,11 +267,12 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule __fun_stmt_val_def(input: ParseFunBodyInput) -> (FunStmt, Type)
-		= name:ident() _ ":=" _ init:expr(input)
+		= mutable:("$")? name:ident() _ ":=" _ init:expr(input)
 	{
 		input.cur_fun_mut().overloads[input.fun_overload].vals.insert(input.line, VariableInfo {
 			name,
 			init,
+			mutable: mutable.is_some(),
 			llvm_value: None
 		});
 		(FunStmt::ValDef { line: input.line }, Type::UNIT_TUPLE)
