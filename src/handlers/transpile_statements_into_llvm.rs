@@ -70,7 +70,9 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 					} else {
 						v.llvm_value = Some(v.init.to_llvm_value(stmts))
 					}
-				}
+				},
+				FunStmt::Assignment { lvalue, new }
+					=> unsafe { LLVMBuildStore(llvm_builder(), new.to_llvm_value(stmts), lvalue.to_llvm_lvalue(stmts)); }
 			}
 		}
 

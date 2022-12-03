@@ -42,7 +42,8 @@ pub enum FunBody {
 pub enum FunStmt {
 	Expr(ExprKind),
 	Return(Box <Expr>),
-	ValDef { line: usize }
+	ValDef { line: usize },
+	Assignment { lvalue: Expr, new: Expr }
 }
 
 #[derive(Debug, Clone)]

@@ -12,7 +12,9 @@ pass = ()
 drop x: i32 = pass
 
 add x y: u8 -> u8
-	$c := x + y
+	$c := x
+	c = c + y
+	c = c + 0
 	return c
 
 main = 0

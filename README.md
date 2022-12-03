@@ -82,6 +82,10 @@ drop x: T
 ## Mutable variable definition
 `$x := expression`
 
+## Assignment
+`x = 3`
+`x = y + z`
+
 ## Binary operators
 `a + b`
 `x + y * z`

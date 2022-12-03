@@ -278,9 +278,14 @@ peg::parser! { grammar okolang() for str {
 		(FunStmt::ValDef { line: input.line }, Type::UNIT_TUPLE)
 	}
 
+	rule __fun_stmt_assign(input: ParseFunBodyInput) -> (FunStmt, Type)
+		= lvalue:expr(input) _ "=" _ new:expr(input)
+	{ (FunStmt::Assignment { lvalue, new }, Type::UNIT_TUPLE) }
+
 	rule fun_stmt(input: ParseFunBodyInput) -> (FunStmt, Type)
 		= ret:__fun_stmt_return(input) { ret }
 		/ val:__fun_stmt_val_def(input) { val }
+		/ assign:__fun_stmt_assign(input) { assign }
 		/ expr:expr(input) { (FunStmt::Expr(expr.kind), expr.ty) }
 
 	rule fundef_arg() -> FunDefArgRuleReturn

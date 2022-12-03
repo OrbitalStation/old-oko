@@ -86,7 +86,7 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt]) -> L
 				LLVMBuildUDiv(llvm_builder(), left, right, name)
 			} else {
 				panic!("bad operand for division")
-			},
+			}
 		}
 	}
 }
@@ -97,7 +97,7 @@ fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt]) -> LLVMValueRef {
 	unsafe { LLVMConstStructInContext(llvm_context(), values.as_mut_ptr(), values.len() as _, 0) }
 }
 
-fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt]) -> LLVMValueRef {
+fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue: bool) -> LLVMValueRef {
 	match location {
 		ExprKindVariableLocation::FunArg {
 			fun_stmt_index,
@@ -109,6 +109,9 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt]) -> LLVMVa
 				_ => unreachable!()
 			};
 			let overload = &fun.overloads[*fun_overload];
+			if is_lvalue {
+				panic!("expected an lvalue")
+			}
 			unsafe { LLVMGetParam(overload.llvm_fun.unwrap(), *var_index as _) }
 		},
 		ExprKindVariableLocation::Val {
@@ -123,8 +126,11 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt]) -> LLVMVa
 			let overload = &fun.overloads[*fun_overload];
 			let val = overload.vals.get(line_def).unwrap();
 			let llvm_value = val.llvm_value.unwrap();
-			if val.mutable {
+
+			if val.mutable && !is_lvalue {
 				unsafe { LLVMBuildLoad(llvm_builder(), llvm_value, b"\0".as_ptr() as _) }
+			} else if !val.mutable && is_lvalue {
+				panic!("expected an lvalue")
 			} else {
 				llvm_value
 			}
@@ -154,15 +160,45 @@ impl Expr {
 		ty: Type::UNIT_TUPLE
 	};
 
-	pub fn to_llvm_value(&self, stmts: &[Stmt]) -> LLVMValueRef {
+	fn _to_llvm(&self, stmts: &[Stmt], is_lvalue: bool) -> LLVMValueRef {
 		match &self.kind {
-			ExprKind::Variable(location) => build_variable(location, stmts),
+			ExprKind::Variable(location) => build_variable(location, stmts, is_lvalue),
+
+			_ if is_lvalue => panic!("expected an lvalue"),
+
 			ExprKind::Tuple(values) => build_tuple(values, stmts),
 			ExprKind::FunCall { fun_stmt_index, fun_overload, args }
 				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts),
 			ExprKind::BinOp { left, right, op }
 				=> build_bin_op(left, right, *op, stmts),
-			ExprKind::Literal(lit) => build_literal(lit, &self.ty)
+			ExprKind::Literal(lit) => build_literal(lit, &self.ty),
 		}
 	}
+
+	pub fn to_llvm_value(&self, stmts: &[Stmt]) -> LLVMValueRef {
+		self._to_llvm(stmts, false)
+	}
+
+	pub fn to_llvm_lvalue(&self, stmts: &[Stmt]) -> LLVMValueRef {
+		self._to_llvm(stmts, true)
+	}
+
+	// pub fn assert_lvalue(&self, stmts: &[Stmt]) {
+	// 	let is_lvalue = match &self.kind {
+	// 		ExprKind::Variable(location) => match location {
+	// 			ExprKindVariableLocation::FunArg { fun_stmt_index, fun_overload, var_index } => match &stmts[*fun_stmt_index] {
+	// 				// TODO! Add mutable arguments
+	// 				Stmt::FunDef(fun) => false/*fun.overloads[*fun_overload].args[*var_index].*/,
+	// 				_ => unreachable!()
+	// 			}
+	// 			ExprKindVariableLocation::Val { fun_stmt_index, fun_overload, line_def } => match &stmts[*fun_stmt_index] {
+	// 				Stmt::FunDef(fun) => fun.overloads[*fun_overload].vals.get(line_def).unwrap().mutable,
+	// 				_ => unreachable!()
+	// 			}
+	// 		},
+	// 		_ => false
+	// 	};
+	//
+	// 	assert!(is_lvalue, "expected an lvalue!")
+	// }
 }
