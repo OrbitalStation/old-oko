@@ -54,6 +54,10 @@ pub enum ExprKind {
 		fun_overload: usize,
 		args: Vec <Expr>
 	},
+	ExternFunCall {
+		fun_stmt_index: usize,
+		args: Vec <Expr>
+	},
 	BinOp {
 		left: Box <Expr>,
 		right: Box <Expr>,
@@ -110,7 +114,7 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			};
 			let overload = &fun.overloads[*fun_overload];
 			if is_lvalue {
-				panic!("expected an lvalue")
+				panic!("fun args cannot be mutable; expected an lvalue")
 			}
 			unsafe { LLVMGetParam(overload.llvm_fun.unwrap(), *var_index as _) }
 		},
@@ -148,6 +152,15 @@ fn build_fun_call(fun_stmt_index: usize, fun_overload: usize, args: &Vec <Expr>,
 	unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 }
 
+fn build_extern_fun_call(fun_stmt_index: usize, args: &Vec <Expr>, stmts: &[Stmt]) -> LLVMValueRef {
+	let fun = match &stmts[fun_stmt_index] {
+		Stmt::ExternFun(fun) => fun,
+		_ => unreachable!()
+	};
+	let mut args = args.iter().map(|x| x.to_llvm_value(stmts)).collect::<Vec <_>>();
+	unsafe { LLVMBuildCall(llvm_builder(), fun.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
+}
+
 #[derive(Debug, Clone)]
 pub struct Expr {
 	pub kind: ExprKind,
@@ -169,6 +182,8 @@ impl Expr {
 			ExprKind::Tuple(values) => build_tuple(values, stmts),
 			ExprKind::FunCall { fun_stmt_index, fun_overload, args }
 				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts),
+			ExprKind::ExternFunCall { fun_stmt_index, args }
+				=> build_extern_fun_call(*fun_stmt_index, args, stmts),
 			ExprKind::BinOp { left, right, op }
 				=> build_bin_op(left, right, *op, stmts),
 			ExprKind::Literal(lit) => build_literal(lit, &self.ty),
@@ -182,23 +197,4 @@ impl Expr {
 	pub fn to_llvm_lvalue(&self, stmts: &[Stmt]) -> LLVMValueRef {
 		self._to_llvm(stmts, true)
 	}
-
-	// pub fn assert_lvalue(&self, stmts: &[Stmt]) {
-	// 	let is_lvalue = match &self.kind {
-	// 		ExprKind::Variable(location) => match location {
-	// 			ExprKindVariableLocation::FunArg { fun_stmt_index, fun_overload, var_index } => match &stmts[*fun_stmt_index] {
-	// 				// TODO! Add mutable arguments
-	// 				Stmt::FunDef(fun) => false/*fun.overloads[*fun_overload].args[*var_index].*/,
-	// 				_ => unreachable!()
-	// 			}
-	// 			ExprKindVariableLocation::Val { fun_stmt_index, fun_overload, line_def } => match &stmts[*fun_stmt_index] {
-	// 				Stmt::FunDef(fun) => fun.overloads[*fun_overload].vals.get(line_def).unwrap().mutable,
-	// 				_ => unreachable!()
-	// 			}
-	// 		},
-	// 		_ => false
-	// 	};
-	//
-	// 	assert!(is_lvalue, "expected an lvalue!")
-	// }
 }

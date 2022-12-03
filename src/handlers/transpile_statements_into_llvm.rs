@@ -8,7 +8,7 @@ pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 	let stmts_ref = &*stmts as *const [Stmt];
 	for stmt in stmts {
 		match stmt {
-			Stmt::ExternFun(fun) => create_extern_fun(fun),
+			Stmt::ExternFun(_) => { /* already done; ignore */ },
 			Stmt::TypeDef(typedef) => create_typedef(typedef),
 			Stmt::FunDef(fundef) => create_fundef(unsafe { &*stmts_ref }, fundef),
 
@@ -52,7 +52,7 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 				},
 				FunStmt::Expr(expr) => match expr {
 					// This builds function call and then just drops the value
-					ExprKind::FunCall { .. } => drop(Expr {
+					ExprKind::FunCall { .. } | ExprKind::ExternFunCall { .. } => drop(Expr {
 						ty: Type::UNIT_TUPLE,
 						kind: expr.clone()
 					}.to_llvm_value(stmts)),
@@ -108,10 +108,6 @@ fn create_typedef(typedef: &TypeDefIndex) {
 		},
 		BakedTypeKind::Builtin(_) => { /* ignore */ }
 	}
-}
-
-fn create_extern_fun(fun: &ExternFun) {
-	create_llvm_fun(&fun.name, fun.args.iter().map(|ty| ty.llvm_type()).collect::<Vec <_>>(), &fun.ret_ty);
 }
 
 pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: &Type) -> LLVMValueRef {

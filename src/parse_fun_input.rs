@@ -55,6 +55,13 @@ impl ParseFunBodyInputStruct {
 		})
 	}
 
+	pub fn extern_fun_by_name(&self, name: &str) -> Option <(usize, &ExternFun)> {
+		unsafe { &*self.stmts }.iter().enumerate().find_map(|(idx, fun)| match fun {
+			Stmt::ExternFun(fun) if fun.name == name => Some((idx, fun)),
+			_ => None
+		})
+	}
+
 	pub fn fun_stmt_index_by_name(&self, name: &str) -> Option <usize> {
 		self.fun_by_name(name).map(|(x, _)| x)
 	}

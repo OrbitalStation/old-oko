@@ -197,6 +197,24 @@ peg::parser! { grammar okolang() for str {
 		panic!("no matching overload for function call of `{}` in function `{}`", fun.name, input.cur_fun().name)
 	}
 
+	rule __expr1_extern_fun_call(input: ParseFunBodyInput) -> Expr
+		= fun:ident() args:__expr1_fun_call_argument(input, open_option_in_arg!(input.extern_fun_by_name(&fun)).1.args.len())?
+	{?
+		let (fun_stmt_index, fun) = input.extern_fun_by_name(&fun).ok_or("function call")?;
+		let args = args.unwrap_or(vec![]);
+		assert_eq!(args.len(), fun.args.len(), "wrong number of arguments");
+		for (idx, arg) in args.iter().enumerate() {
+			assert_eq!(arg.ty, fun.args[idx], "incorrect type of an argument")
+		}
+		Ok(Expr {
+			kind: ExprKind::ExternFunCall {
+				fun_stmt_index,
+				args
+			},
+			ty: fun.ret_ty.clone()
+		})
+	}
+
 	rule __expr1_bin_op <T> (op: rule <T>, input: ParseFunBodyInput)
 		= (__ op() __) {}
 		/ op() {}
@@ -219,6 +237,7 @@ peg::parser! { grammar okolang() for str {
 		x:(@) __expr1_bin_op(<"÷">, input) y:@ { check2arithmetic(x, y, BinOpType::Div) }
 		--
 		x:__expr1_fun_call(input) { x }
+		x:__expr1_extern_fun_call(input) { x }
 		--
 		"(" _ ")" { Expr::UNIT_TUPLE }
 		"(" _ x:expr(input) _ ")" { x }
@@ -337,7 +356,8 @@ peg::parser! { grammar okolang() for str {
 				ret_ty: match ret_ty {
 					None => Type::UNIT_TUPLE,
 					Some(ty) => ty
-				}
+				},
+				llvm_fun: None
 			}),
 			Some(body) => {
 				let (is_simple, lines) = body;

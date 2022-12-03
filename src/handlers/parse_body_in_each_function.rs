@@ -2,6 +2,8 @@ use crate::*;
 
 pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
     for input in ParseFunBodyInputStruct::new(stmts) {
+        let mut is_extern_fun = false;
+
         let bodies = match input.cur() {
             Stmt::FunDef(fun) => {
                 let mut bodies = Vec::with_capacity(fun.overloads.len());
@@ -29,8 +31,23 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
 
                 bodies
             },
+            Stmt::ExternFun(_) => {
+                is_extern_fun = true;
+                vec![]
+            },
             _ => continue
         };
+
+        if is_extern_fun {
+            match input.cur_mut() {
+                Stmt::ExternFun(fun) => {
+                    let args = fun.args.iter().map(|x| x.llvm_type()).collect();
+                    fun.llvm_fun = Some(create_llvm_fun(&fun.name, args, &fun.ret_ty))
+                },
+                _ => unreachable!()
+            }
+            continue
+        }
 
         let overloads_num = bodies.len();
 
