@@ -15,10 +15,9 @@ macro_rules! open_option_in_arg {
 	}
 }
 
-fn check2arithmetic(mut x: Expr, mut y: Expr, op: BinOpType) -> Expr {
+fn _check2arithmetic(mut x: Expr, mut y: Expr, op: BinOpType, ty: impl for <'a> Fn(&'a Expr) -> Type) -> Expr {
 	assert!(x.ty.eq_implicit(&mut y.ty, Some(&mut x.kind), Some(&mut y.kind)), "cannot apply `{:?}` to different types", op);
-	assert!(x.ty.is_arithmetic(), "cannot apply `{:?}` to non-arithmetic types", op);
-	let ty = x.ty.clone();
+	let ty = ty(&x);
 	Expr {
 		kind: ExprKind::BinOp {
 			left: Box::new(x),
@@ -27,6 +26,15 @@ fn check2arithmetic(mut x: Expr, mut y: Expr, op: BinOpType) -> Expr {
 		},
 		ty
 	}
+}
+
+fn check2arithmetic(x: Expr, y: Expr, op: BinOpType) -> Expr {
+	assert!(x.ty.is_arithmetic(), "cannot apply `{:?}` to non-arithmetic types", op);
+	_check2arithmetic(x, y, op, |x| x.ty.clone())
+}
+
+fn check2arithmetic_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
+	_check2arithmetic(x, y, op, |_| Type::get_builtin("bool"))
 }
 
 peg::parser! { grammar okolang() for str {
@@ -230,6 +238,9 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
+		x:(@) __expr1_bin_op(<"==">, input) y:@ { check2arithmetic_bool(x, y, BinOpType::Eq) }
+		x:(@) __expr1_bin_op(<"!=">, input) y:@ { check2arithmetic_bool(x, y, BinOpType::NotEq) }
+		--
 		x:(@) __expr1_bin_op(<"+">, input) y:@ { check2arithmetic(x, y, BinOpType::Add) }
 		x:(@) __expr1_bin_op(<"-">, input) y:@ { check2arithmetic(x, y, BinOpType::Sub) }
 		--

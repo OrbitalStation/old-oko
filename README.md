@@ -94,3 +94,6 @@ drop x: T
 `a + b`
 `x + y × z`
 `(x + y) ÷ z`
+`q - p`
+`a == b`
+`a != b`

@@ -1,7 +1,8 @@
 use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
-use core::fmt::{Debug, Formatter, Write, Result};
+use core::fmt::{Debug, Formatter, Result};
+use llvm::LLVMIntPredicate;
 
 #[derive(Debug, Clone)]
 pub enum ExprKindVariableLocation {
@@ -23,16 +24,21 @@ pub enum BinOpType {
 	Add,
 	Sub,
 	Mul,
-	Div
+	Div,
+
+	Eq,
+	NotEq,
 }
 
 impl Debug for BinOpType {
 	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
-		f.write_char(match self {
-			Self::Add => '+',
-			Self::Sub => '-',
-			Self::Mul => '*',
-			Self::Div => '/'
+		f.write_str(match self {
+			Self::Add => "+",
+			Self::Sub => "-",
+			Self::Mul => "*",
+			Self::Div => "/",
+			Self::Eq => "==",
+			Self::NotEq => "!="
 		})
 	}
 }
@@ -90,7 +96,9 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt]) -> L
 				LLVMBuildUDiv(llvm_builder(), left, right, name)
 			} else {
 				panic!("bad operand for division")
-			}
+			},
+			BinOpType::Eq => LLVMBuildICmp(llvm_builder(), LLVMIntPredicate::LLVMIntEQ, left, right, name),
+			BinOpType::NotEq => LLVMBuildICmp(llvm_builder(), LLVMIntPredicate::LLVMIntNE, left, right, name)
 		}
 	}
 }

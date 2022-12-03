@@ -22,6 +22,8 @@ macro_rules! define {
 }
 
 define!(pub const BUILTIN_TYPES = [
+	"bool" LLVMInt1TypeInContext Boolean,
+
 	"u8" LLVMInt8TypeInContext Unsigned,
 	"u16" LLVMInt16TypeInContext Unsigned,
 	"u32" LLVMInt32TypeInContext Unsigned,
@@ -41,5 +43,6 @@ pub struct BuiltinType {
 
 pub enum BuiltinTypeKind {
 	Signed,
-	Unsigned
+	Unsigned,
+	Boolean
 }

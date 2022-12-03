@@ -13,4 +13,4 @@ drop x: i32 = pass
 
 add x y: u8 = x + y
 
-main x: *u8 = drop puts x
+areEq x y: i32 = x != y
