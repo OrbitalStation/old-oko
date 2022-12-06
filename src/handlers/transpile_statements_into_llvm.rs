@@ -32,49 +32,7 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 		let bb = unsafe { LLVMAppendBasicBlockInContext(llvm_context(), fun, b"entry\0".as_ptr() as *const _) };
 		unsafe { LLVMPositionBuilderAtEnd(llvm_builder(), bb) }
 
-		let mut terminated = false;
-
-		for i in 0..body.len() {
-			match &body[i] {
-				FunStmt::Return(expr) => {
-					if expr.ty == Type::UNIT_TUPLE {
-						// This will insert function calls and whatever stuff
-						expr.to_llvm_value(stmts);
-						unsafe { LLVMBuildRetVoid(llvm_builder()); }
-					} else {
-						unsafe { LLVMBuildRet(llvm_builder(), expr.to_llvm_value(stmts)); }
-					}
-					if i + 1 < body.len() {
-						println!("WARNING: some statements in function `{name}` are unreachable");
-						body.drain(i + 1..);
-					}
-					terminated = true;
-				},
-				FunStmt::Expr(expr) => match expr {
-					// This builds function call and then just drops the value
-					ExprKind::FunCall { .. } | ExprKind::ExternFunCall { .. } => drop(Expr {
-						ty: Type::UNIT_TUPLE,
-						kind: expr.clone()
-					}.to_llvm_value(stmts)),
-					ExprKind::BinOp { .. } => panic!("binary operator is not allowed as a function statement"),
-					ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
-					ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement"),
-					ExprKind::Literal(_) => panic!("literal is not allowed as a function statement")
-				},
-				FunStmt::ValDef { line } => {
-					let v = vals.get_mut(line).unwrap();
-					if v.mutable {
-						let llvm_value = unsafe { LLVMBuildAlloca(llvm_builder(), v.init.ty.llvm_type(), b"\0".as_ptr() as _) };
-						unsafe { LLVMBuildStore(llvm_builder(), v.init.to_llvm_value(stmts), llvm_value) };
-						v.llvm_value = Some(llvm_value)
-					} else {
-						v.llvm_value = Some(v.init.to_llvm_value(stmts))
-					}
-				},
-				FunStmt::Assignment { lvalue, new }
-					=> unsafe { LLVMBuildStore(llvm_builder(), new.to_llvm_value(stmts), lvalue.to_llvm_lvalue(stmts)); }
-			}
-		}
+		let terminated = transpile_complex_body(body, vals, stmts, name, false).0;
 
 		if !terminated {
 			if *ret_ty == Type::UNIT_TUPLE {

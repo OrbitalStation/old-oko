@@ -34,7 +34,7 @@ pub struct FunArg {
 
 #[derive(Debug, Clone)]
 pub enum FunBody {
-	Raw { lines: Vec <String> },
+	Raw { code: String },
 	Baked(Vec <FunStmt>)
 }
 

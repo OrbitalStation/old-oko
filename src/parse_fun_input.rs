@@ -3,25 +3,25 @@ use crate::*;
 pub struct ParseFunBodyInputStruct {
 	pub cur_stmt: usize,
 	pub fun_overload: usize,
-	pub line: usize,
+	line: *mut usize,
 	pub stmts: *mut [Stmt]
 }
 
 impl ParseFunBodyInputStruct {
-	pub fn new(stmts: &mut [Stmt]) -> Self {
+	pub fn new(stmts: &mut [Stmt], line: &mut usize) -> Self {
 		Self {
 			cur_stmt: 0,
 			fun_overload: 0,
-			line: 0,
+			line: line as *mut usize,
 			stmts: stmts as *mut [Stmt]
 		}
 	}
 
-	pub fn with(&self, o: usize, line: usize) -> Self {
+	pub fn with(&self, o: usize) -> Self {
 		Self {
 			cur_stmt: self.cur_stmt,
 			fun_overload: o,
-			line,
+			line: self.line,
 			stmts: self.stmts
 		}
 	}
@@ -64,6 +64,14 @@ impl ParseFunBodyInputStruct {
 
 	pub fn fun_stmt_index_by_name(&self, name: &str) -> Option <usize> {
 		self.fun_by_name(name).map(|(x, _)| x)
+	}
+
+	pub fn line(&self) -> usize {
+		unsafe { *self.line }
+	}
+
+	pub fn next_line(&self) {
+		unsafe { *self.line += 1 }
 	}
 }
 

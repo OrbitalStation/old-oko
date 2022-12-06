@@ -5,12 +5,23 @@ foo x: Opaque -> Opaque = extern
 
 puts str: *u8 -> i32 = extern
 
-identity x: i32 -> i32 = x
-
 pass = ()
+
+eqq = pass
+
+fibLong n: u64 -> u64
+	if n == 0
+		return 1
+	else if n == 1
+		return 1
+	else
+		return (fibLong n - 1) + fibLong n - 2
+
+fibShort n: u64 -> u64
+	if n == 0 do return 1 else if n == 1 do return 1 else return (fibShort n - 1) + fibShort n - 2
+
+identity x: i32 -> i32 = x
 
 drop x: i32 = pass
 
 add x y: u8 = x + y
-
-areEq x y: i32 = x != y

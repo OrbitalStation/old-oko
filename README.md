@@ -97,3 +97,37 @@ drop x: T
 `q - p`
 `a == b`
 `a != b`
+
+## Ifs
+```
+if <cond>
+    <stmt1>
+    <stmtN>
+
+
+if <cond>
+    <stmt1>
+    <stmtN>
+else
+    <stmt1>
+    <stmtN>
+
+if <cond>
+    <stmt1>
+    <stmtN>
+else if <cond2>
+    <stmt1>
+    <stmtN>
+else
+    <stmt1>
+    <stmtN>
+
+if <cond> do <stmt>
+
+if <cond> do <stmt> else <stmt2>
+
+if <cond>
+    <stmt1>
+    <stmtN>
+else <stmt>
+```

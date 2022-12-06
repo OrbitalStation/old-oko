@@ -144,7 +144,7 @@ peg::parser! { grammar okolang() for str {
 				}),
 				ty: arg.ty.clone()
 			}
-		} else if let Some((line, info)) = input.cur_fun().overloads[input.fun_overload].vals.iter().find(|(line, x)| **line < input.line && x.name == name) {
+		} else if let Some((line, info)) = input.cur_fun().overloads[input.fun_overload].vals.iter().find(|(line, x)| **line < input.line() && x.name == name) {
 			Expr {
 				kind: ExprKind::Variable(ExprKindVariableLocation::Val {
 					fun_stmt_index: input.cur_stmt,
@@ -237,6 +237,52 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
+	rule __expr1_if_body_complex_branch_part(input: ParseFunBodyInput) -> (Vec <FunStmt>, Type)
+		= nl() b:complex_body_line() ** nl()
+	{
+		assert!(!b.is_empty(), "`if` branch cannot be empty");
+		handle_complex_body_line(&(b.join("\n") + "\n"), input)
+	}
+
+	rule __expr1_if_body_complex_else_branch(input: ParseFunBodyInput) -> (Vec <FunStmt>, Type)
+		= nl() "else" no:__expr1_if_body_complex_branch_part(input) { no }
+		/ (nl() / __) "else" __ stmt:fun_stmt(input) { (vec![stmt.0], stmt.1) }
+
+	rule __expr1_if_body_yes(input: ParseFunBodyInput) -> (Vec <FunStmt>, Type)
+		= yes:__expr1_if_body_complex_branch_part(input) { yes }
+		/ __ "do" __ stmt:fun_stmt(input) { (vec![stmt.0], stmt.1) }
+
+	rule __expr1_if_body(input: ParseFunBodyInput) -> (Vec <FunStmt>, Vec <FunStmt>, Type)
+		= yes:__expr1_if_body_yes(input) no:__expr1_if_body_complex_else_branch(input)?
+	{
+		let (yes, yes_ty) = yes;
+
+		let no = if let Some((no, no_ty)) = no {
+			assert_eq!(yes_ty, no_ty, "there are different types on `if` branches");
+			no
+		} else {
+			assert_eq!(yes_ty, Type::UNIT_TUPLE, "`then` branch of complex `if` with no `else` branch shall return `()` type");
+			vec![]
+		};
+
+		(yes, no, yes_ty)
+	}
+
+	rule __expr1_if(input: ParseFunBodyInput) -> Expr
+		= "if" __ cond:expr(input) body:__expr1_if_body(input)
+	{
+		assert_eq!(cond.ty, Type::get_builtin("bool"), "`if` condition must be of `bool` type");
+		let (yes, no, ty) = body;
+		Expr {
+			kind: ExprKind::If {
+				cond: Box::new(cond),
+				yes,
+				no
+			},
+			ty
+		}
+	}
+
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
 		x:(@) __expr1_bin_op(<"==">, input) y:@ { check2arithmetic_bool(x, y, BinOpType::Eq) }
 		x:(@) __expr1_bin_op(<"!=">, input) y:@ { check2arithmetic_bool(x, y, BinOpType::NotEq) }
@@ -252,12 +298,13 @@ peg::parser! { grammar okolang() for str {
 		--
 		"(" _ ")" { Expr::UNIT_TUPLE }
 		"(" _ x:expr(input) _ ")" { x }
+		x:__expr1_if(input) { x }
 		x:__expr1_variable(input) { x }
 		x:__expr1_literal() { x }
 	}
 
 	rule expr(input: ParseFunBodyInput) -> Expr
-		= tuple:(__expr1(input) ** (_ "," _)) is_there_a_trailing_comma:(_ "," _)?
+		= tuple:(__expr1(input) ++ (_ "," _)) is_there_a_trailing_comma:(_ "," _)?
 	{
 		let mut tuple = tuple;
 		if tuple.len() == 1 && is_there_a_trailing_comma.is_none() {
@@ -271,7 +318,7 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule __fun_stmt_get_return_val(input: ParseFunBodyInput) -> Expr
-		= _ ![_] { Expr::UNIT_TUPLE }
+		= nl() { Expr::UNIT_TUPLE }
 		/ __ expr:expr(input) { expr }
 
 	rule __fun_stmt_return(input: ParseFunBodyInput) -> (FunStmt, Type)
@@ -299,13 +346,13 @@ peg::parser! { grammar okolang() for str {
 	rule __fun_stmt_val_def(input: ParseFunBodyInput) -> (FunStmt, Type)
 		= mutable:("$")? name:ident() _ ":=" _ init:expr(input)
 	{
-		input.cur_fun_mut().overloads[input.fun_overload].vals.insert(input.line, VariableInfo {
+		input.cur_fun_mut().overloads[input.fun_overload].vals.insert(input.line(), VariableInfo {
 			name,
 			init,
 			mutable: mutable.is_some(),
 			llvm_value: None
 		});
-		(FunStmt::ValDef { line: input.line }, Type::UNIT_TUPLE)
+		(FunStmt::ValDef { line: input.line() }, Type::UNIT_TUPLE)
 	}
 
 	rule __fun_stmt_assign_short_assign <T> (input: ParseFunBodyInput, op: rule <T>, kind: BinOpType) -> (FunStmt, Type)
@@ -337,23 +384,26 @@ peg::parser! { grammar okolang() for str {
 		= args:fundef_arg() ** (_ "," _)
 	{ args.into_iter().flatten().collect() }
 
-	rule __fundef_complex_body_line() -> String
-		= "\t" line:$([^ '\n']+) nl() { line.to_string() }
+	rule complex_body_line() -> String
+		= "\t" line:$([^ '\n']+) { line.to_string() }
 
-	rule fundef_body() -> (bool, Vec <String>)
-		= _ "=" _ rest:$([^ '\n']+) nl() { (true, vec![rest.to_string()]) }
-		/ nl() code:__fundef_complex_body_line()*
+	rule complex_body_line_with_nl() -> String
+		= line:complex_body_line() nl() { line }
+
+	rule fundef_body() -> (bool, String)
+		= _ "=" _ rest:$([^ '\n']+) nl() { (true, rest.to_string()) }
+		/ nl() code:complex_body_line_with_nl()*
 	{
 		if code.is_empty() {
 			panic!("a complex function cannot have empty body")
 		}
-		(false, code)
+		(false, code.join("\n") + "\n")
 	}
 
 	rule __fun_ret_ty() -> Type
 		= _ "->" _ ty:ty() { ty }
 
-	rule __fun_or_extern_fun_definition_cont() -> Option <(bool, Vec <String>)>
+	rule __fun_or_extern_fun_definition_cont() -> Option <(bool, String)>
 		= _ "=" _ "extern" nl() { None }
 		/ body:fundef_body() { Some(body) }
 
@@ -370,14 +420,12 @@ peg::parser! { grammar okolang() for str {
 				},
 				llvm_fun: None
 			}),
-			Some(body) => {
-				let (is_simple, lines) = body;
-
+			Some((is_simple, code)) => {
 				Stmt::FunDef(FunDef {
 					name,
 					overloads: vec![FunDefOverloadablePart {
 						args,
-						body: FunBody::Raw { lines },
+						body: FunBody::Raw { code },
 						ret_ty: match ret_ty {
 							None if is_simple => FunRetType::Undetermined,
 							None => FunRetType::Determined(Type::UNIT_TUPLE),
@@ -398,14 +446,17 @@ peg::parser! { grammar okolang() for str {
 
 	rule __global_whitespace() = quiet!{[' ' | '\n' | '\t']*}
 
+	rule __parse_complex_body_nl(input: ParseFunBodyInput)
+		= nl() { input.next_line() }
+
 	/* PUBLIC SECTION */
 
 	pub rule parse_raw_oko_code() -> Vec <Stmt>
 		= __global_whitespace() stmts:(stmt() ** __global_whitespace()) __global_whitespace()
 	{ stmts }
 
-	pub rule parse_fun_body_line(input: ParseFunBodyInput) -> (FunStmt, Type)
-		= expr:fun_stmt(input) { expr }
+	pub rule parse_complex_body(input: ParseFunBodyInput) -> Vec <(FunStmt, Type)>
+		= exprs:fun_stmt(input) ++ __parse_complex_body_nl(input) nl()? { exprs }
 
 } }
 

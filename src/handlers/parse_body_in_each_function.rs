@@ -1,7 +1,8 @@
 use crate::*;
 
 pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
-    for input in ParseFunBodyInputStruct::new(stmts) {
+    let mut line = 0;
+    for input in ParseFunBodyInputStruct::new(stmts, &mut line) {
         let mut is_extern_fun = false;
 
         let bodies = match input.cur() {
@@ -9,21 +10,17 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
                 let mut bodies = Vec::with_capacity(fun.overloads.len());
                 for (overload_idx, overload) in fun.overloads.iter().enumerate() {
                     let code = match &overload.body {
-                        FunBody::Raw { lines } => lines,
+                        FunBody::Raw { code } => code,
                         _ => unreachable!()
                     };
 
                     let body = if overload.is_simple {
-                        let (fun_stmt, _) = parse_fun_body_line(&format!("return {}", code[0]), &input.with(overload_idx, 0)).unwrap();
-                        vec![fun_stmt]
+                        let (fun_stmt, _) = handle_complex_body_line(&format!("return {code}\n"), &input.with(overload_idx));
+                        fun_stmt
                     } else {
-                        code.iter().enumerate().map(|(idx, line)| {
-                            let (fun_stmt, ty) = parse_fun_body_line(&line, &input.with(overload_idx, idx)).unwrap();
-                            if ty != Type::UNIT_TUPLE {
-                                panic!("an expression from a complex function is not of `()` type")
-                            }
-                            fun_stmt
-                        }).collect::<Vec <_>>()
+                        let (fun_stmts, ty) = handle_complex_body_line(&*code, &input.with(overload_idx));
+                        assert_eq!(ty, Type::UNIT_TUPLE, "a statement in a complex function is not of `()` type");
+                        fun_stmts
                     };
 
                     bodies.push(body)
