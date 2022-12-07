@@ -119,6 +119,10 @@ pub enum TypeKind {
 		ty: Box <Type>,
 		ptrs: TypePointers
 	},
+	Reference {
+		ty: Box <Type>,
+		mutable: bool
+	},
 	Array {
 		ty: Box <Type>,
 		size: usize
@@ -138,6 +142,14 @@ impl Debug for Type {
 			},
 			TypeKind::Pointer { ty, ptrs } => {
 				ptrs.fmt(f)?;
+				ty.fmt(f)
+			},
+			TypeKind::Reference { ty, mutable } => {
+				f.write_char(if *mutable {
+					'$'
+				} else {
+					'&'
+				})?;
 				ty.fmt(f)
 			},
 			TypeKind::Array { ty, size } => {
@@ -175,6 +187,21 @@ impl Type {
 			_ => unimplemented!()
 		}
 	}
+
+	// pub fn get_fields_of_struct(&self) -> Option <&Vec <StructField>> {
+	// 	if let TypeKind::Scalar { index } = self.kind {
+	// 		match Self::type_list() {
+	// 			TypeList::Baked(baked) => match &baked[index].kind {
+	// 				BakedTypeKind::Ordinary(def) => if let TypeDefKind::Struct { fields } = def {
+	// 					return Some(fields)
+	// 				},
+	// 				_ => ()
+	// 			},
+	// 			_ => ()
+	// 		}
+	// 	}
+	// 	None
+	// }
 
 	pub fn eq_implicit(&mut self, other: &mut Self, expr1: Option <&mut ExprKind>, expr2: Option <&mut ExprKind>) -> bool {
 		if self == other {
@@ -255,6 +282,10 @@ impl Type {
 				}
 				ty
 			},
+			TypeKind::Reference { ty, .. } => {
+				// No distinction between either refs and ptrs or mutable and immutable
+				unsafe { LLVMPointerType(ty.llvm_type(), 0) }
+			},
 			TypeKind::Array { ty, size } => {
 				unsafe { LLVMArrayType(ty.llvm_type(), *size as _) }
 			},
@@ -320,6 +351,13 @@ impl Type {
 		Self::from_kind(TypeKind::Array {
 			ty: Box::new(ty),
 			size: size.parse().unwrap(),
+		})
+	}
+
+	pub fn meet_new_reference(ty: Self, mutable: bool) -> Self {
+		Self::from_kind(TypeKind::Reference {
+			ty: Box::new(ty),
+			mutable
 		})
 	}
 

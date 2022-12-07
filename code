@@ -16,4 +16,14 @@ identity x: i32 = x
 
 drop x: [i32 x 4] = pass
 
+* `as` is a special operator which works if the type has method `from` on it
+* For example, `a as T` is equivalent to `T::from(a)`
+* asPtr.& [i8 x 14] = i as *[i8 x 14] as *i8
+
+* "Hallo".asPtr
+
 add x y: u8 = x + y
+
+ty Wrapper = x: i32
+
+unwrap x: &Wrapper = x

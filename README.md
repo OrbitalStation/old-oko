@@ -67,11 +67,17 @@ drop x: T
 
 ## Types
 
-* `TypeName` - a reference to the type of that name
-* `*T` -> a constant pointer to the `T`
-* `^T` -> a mutable pointer to the `T`
+* `TypeName` -> a type of that name
+* `*T` -> a constant pointer to `T`
+* `^T` -> a mutable pointer to `T`
 * `(X, Y, Z, ...)` -> a tuple of types
 * `[T x 14]` -> an array of types
+* `&T` -> a reference to `T`
+* `$T` -> a mutable reference to `T`
+
+Difference between pointers and references(in the future) is that
+pointers are unsafe and fully explicit, whilst references are
+restricted with lifetimes and usually allow implicit stuff
 
 ## Extern function definition
 
