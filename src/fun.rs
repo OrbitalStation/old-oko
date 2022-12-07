@@ -40,10 +40,19 @@ pub enum FunBody {
 
 #[derive(Debug, Clone)]
 pub enum FunStmt {
-	Expr(ExprKind),
+	Expr(Expr),
 	Return(Box <Expr>),
 	ValDef { line: usize },
 	Assignment { lvalue: Expr, new: Expr }
+}
+
+impl FunStmt {
+	pub fn as_expr_mut(&mut self) -> Option <&mut Expr> {
+		match self {
+			Self::Expr(expr) => Some(expr),
+			_ => None
+		}
+	}
 }
 
 #[derive(Debug, Clone)]

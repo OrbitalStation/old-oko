@@ -37,21 +37,15 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 					None
 				})
 			},
-			FunStmt::Expr(expr) => match expr {
+			FunStmt::Expr(expr) => match &expr.kind {
 				ExprKind::FunCall { .. } | ExprKind::ExternFunCall { .. } => {
-					let e = Expr {
-						ty: Type::UNIT_TUPLE,
-						kind: expr.clone()
-					}.to_llvm_value(stmts, name).0;
+					let e = expr.to_llvm_value(stmts, name).0;
 					if get_last {
 						return (false, Some(e))
 					}
 				},
 				ExprKind::If { .. } => {
-					let (e, k) = Expr {
-						ty: Type::UNIT_TUPLE,
-						kind: expr.clone()
-					}.to_llvm_value(stmts, name);
+					let (e, k) = expr.to_llvm_value(stmts, name);
 					if k {
 						if i + 1 < body.len() {
 							panic!("ERROR: some statements in function `{name}` are unreachable")
@@ -66,10 +60,8 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 						return (false, Some(e))
 					}
 				},
-				ExprKind::BinOp { .. } => panic!("binary operator is not allowed as a function statement"),
-				ExprKind::Variable(_) => panic!("variable is not allowed as a function statement"),
-				ExprKind::Tuple(_) => panic!("tuple is not allowed as a function statement"),
-				ExprKind::Literal(_) => panic!("literal is not allowed as a function statement")
+				_ if !get_last => panic!("this expression is not allowed as a fun stmt"),
+				_ => return (false, Some(expr.to_llvm_value(stmts, name).0))
 			},
 			FunStmt::ValDef { line } => {
 				let v = vals.get_mut(line).unwrap();

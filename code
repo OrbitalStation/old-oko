@@ -16,7 +16,10 @@ fibLong n: u64 -> u64
 		return (fibLong n - 1) + fibLong n - 2
 
 fibShort n: u64 -> u64
-	if n == 0 or n == 1 do return 1 else return (fibShort n - 1) + fibShort n - 2
+	return if n == 0 or n == 1 do 1 else (fibShort n - 1) + fibShort n - 2
+
+* Sadly not smart enough to infer the type of the function on its own
+fibShorter n: u64 -> u64 = if n == 0 or n == 1 do 1 else (fibShorter n - 1) + fibShorter n - 2
 
 identity x: i32 -> i32 = x
 

@@ -244,32 +244,50 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule __expr1_if_body_complex_branch_part(input: ParseFunBodyInput) -> (Vec <FunStmt>, Type)
+	rule __expr1_if_body_complex_branch_part(input: ParseFunBodyInput) -> Vec <FunStmt>
 		= nl() b:complex_body_line() ** nl()
 	{
 		assert!(!b.is_empty(), "`if` branch cannot be empty");
-		handle_complex_body_line(&(b.join("\n") + "\n"), input)
+		handle_complex_body_line(&(b.join("\n") + "\n"), input).0
 	}
 
-	rule __expr1_if_body_complex_else_branch(input: ParseFunBodyInput) -> (Vec <FunStmt>, Type)
+	rule __expr1_if_body_complex_else_branch(input: ParseFunBodyInput) -> Vec <FunStmt>
 		= nl() "else" no:__expr1_if_body_complex_branch_part(input) { no }
-		/ (nl() / __) "else" __ stmt:fun_stmt(input) { (vec![stmt.0], stmt.1) }
+		/ (nl() / __) "else" __ stmt:fun_stmt(input) { vec![stmt.0] }
 
-	rule __expr1_if_body_yes(input: ParseFunBodyInput) -> (Vec <FunStmt>, Type)
+	rule __expr1_if_body_yes(input: ParseFunBodyInput) -> Vec <FunStmt>
 		= yes:__expr1_if_body_complex_branch_part(input) { yes }
-		/ __ "do" __ stmt:fun_stmt(input) { (vec![stmt.0], stmt.1) }
+		/ __ "do" __ stmt:fun_stmt(input) { vec![stmt.0] }
 
 	rule __expr1_if_body(input: ParseFunBodyInput) -> (Vec <FunStmt>, Vec <FunStmt>, Type)
 		= yes:__expr1_if_body_yes(input) no:__expr1_if_body_complex_else_branch(input)?
 	{
-		let (yes, yes_ty) = yes;
+		let mut yes = yes;
 
-		let no = if let Some((no, no_ty)) = no {
-			assert_eq!(yes_ty, no_ty, "there are different types on `if` branches");
-			no
+		let yes_last = yes.last_mut().unwrap().as_expr_mut();
+
+		let (no, yes_ty) = if let Some(mut no) = no {
+			let no_last = no.last_mut().unwrap().as_expr_mut();
+			let (cond, yes_ty) = if let Some(yes) = yes_last {
+				if let Some(no) = no_last {
+					let cond = yes.ty.eq_implicit(&mut no.ty, Some(&mut yes.kind), Some(&mut no.kind));
+					let ty = yes.ty.clone();
+					(cond, ty)
+				} else {
+					(yes.ty == Type::UNIT_TUPLE, Type::UNIT_TUPLE)
+				}
+			} else if let Some(no) = no_last {
+				(no.ty == Type::UNIT_TUPLE, Type::UNIT_TUPLE)
+			} else {
+				(true, Type::UNIT_TUPLE)
+			};
+			assert!(cond, "there are different types on `if` branches");
+			(no, yes_ty)
 		} else {
-			assert_eq!(yes_ty, Type::UNIT_TUPLE, "`then` branch of complex `if` with no `else` branch shall return `()` type");
-			vec![]
+			if let Some(yes) = yes_last {
+				assert_eq!(yes.ty, Type::UNIT_TUPLE, "`then` branch of complex `if` with no `else` branch shall return `()` type");
+			}
+			(vec![], Type::UNIT_TUPLE)
 		};
 
 		(yes, no, yes_ty)
@@ -379,7 +397,11 @@ peg::parser! { grammar okolang() for str {
 		= ret:__fun_stmt_return(input) { ret }
 		/ val:__fun_stmt_val_def(input) { val }
 		/ assign:__fun_stmt_assign(input) { assign }
-		/ expr:expr(input) { (FunStmt::Expr(expr.kind), expr.ty) }
+		/ expr:expr(input)
+	{
+		let ty = expr.ty.clone();
+		(FunStmt::Expr(expr), ty)
+	}
 
 	rule fundef_arg() -> FunDefArgRuleReturn
 		= names:ident() ++ __ _ ":" _ ty:ty()
