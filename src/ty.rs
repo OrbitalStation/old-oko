@@ -119,6 +119,10 @@ pub enum TypeKind {
 		ty: Box <Type>,
 		ptrs: TypePointers
 	},
+	Array {
+		ty: Box <Type>,
+		size: usize
+	},
 	Tuple { types: Vec <Type> },
 	Integer
 }
@@ -135,6 +139,9 @@ impl Debug for Type {
 			TypeKind::Pointer { ty, ptrs } => {
 				ptrs.fmt(f)?;
 				ty.fmt(f)
+			},
+			TypeKind::Array { ty, size } => {
+				f.write_fmt(format_args!("[{ty:?} x {size}]"))
 			},
 			TypeKind::Tuple { types } => {
 				f.write_char('(')?;
@@ -248,6 +255,9 @@ impl Type {
 				}
 				ty
 			},
+			TypeKind::Array { ty, size } => {
+				unsafe { LLVMArrayType(ty.llvm_type(), *size as _) }
+			},
 			TypeKind::Tuple { types } => {
 				let mut types = types.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
 				unsafe { LLVMStructType(types.as_mut_ptr(), types.len() as _, 0) }
@@ -303,6 +313,13 @@ impl Type {
 		Self::from_kind(TypeKind::Pointer {
 			ty: Box::new(ty),
 			ptrs: TypePointers::from(ptrs),
+		})
+	}
+
+	pub fn meet_new_array(ty: Self, size: &str) -> Self {
+		Self::from_kind(TypeKind::Array {
+			ty: Box::new(ty),
+			size: size.parse().unwrap(),
 		})
 	}
 

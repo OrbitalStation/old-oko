@@ -71,6 +71,7 @@ drop x: T
 * `*T` -> a constant pointer to the `T`
 * `^T` -> a mutable pointer to the `T`
 * `(X, Y, Z, ...)` -> a tuple of types
+* `[T x 14]` -> an array of types
 
 ## Extern function definition
 

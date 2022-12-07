@@ -70,6 +70,7 @@ peg::parser! { grammar okolang() for str {
 
 	rule __non_ptr_ty() -> Type
 		= name:ident() { Type::meet_new_raw_scalar(name, None) }
+		/ "[" _ ty:ty() __ "x" __ num:$(digit()+) _ "]" { Type::meet_new_array(ty, num) }
 		/ "(" _ types:(ty() ** (_ "," _)) _ ")" { Type::from_kind(TypeKind::Tuple { types }) }
 
 	rule ty() -> Type
