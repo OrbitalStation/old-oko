@@ -318,6 +318,25 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
+	// rule __expr1_access_member(input: ParseFunBodyInput, expr: Expr) -> Expr
+	// 	= field:ident()
+	// {?
+	// 	let fields = expr.ty.get_fields_of_struct().ok_or("member access")?;
+	// 	let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == field).ok_or("member access")?;
+	// 	Ok(Expr {
+	// 		kind: ExprKind::AccessField {
+	// 			i: Box::new(expr),
+	// 			def: fields,
+	// 			field: idx
+	// 		},
+	// 		ty: field.ty.clone()
+	// 	})
+	// }
+	//
+	// // rule __expr1_access_inner() -> Expr
+	// // 	= expr:expr(input) __ "." __ member:__expr1_access_member(input, expr)
+	// // { member }
+
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
 		x:(@) __ "and" __ y:@ { check2full_bool(x, y, BinOpType::And) }
 		x:(@) __ "or" __ y:@ { check2full_bool(x, y, BinOpType::Or) }

@@ -26,4 +26,7 @@ add x y: u8 = x + y
 
 ty Wrapper = x: i32
 
-unwrap x: &Wrapper = x
+unwrap x: Wrapper = x
+
+test x: Wrapper
+	y := unwrap x

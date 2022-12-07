@@ -25,8 +25,16 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 					// This will insert function calls and whatever stuff
 					expr.to_llvm_value(stmts, name);
 					unsafe { LLVMBuildRetVoid(llvm_builder()); }
-				} else {
+				} else if expr.ty.is_copy() {
 					unsafe { LLVMBuildRet(llvm_builder(), expr.to_llvm_value(stmts, name).0); }
+				} else {
+					unsafe {
+						let load = LLVMBuildLoad(llvm_builder(), expr.to_llvm_value(stmts, name).0, b"\0".as_ptr() as _);
+						let fun = LLVMGetBasicBlockParent(LLVMGetInsertBlock(llvm_builder()));
+						let first_arg = LLVMGetParam(fun, 0);
+						LLVMBuildStore(llvm_builder(), load, first_arg);
+						LLVMBuildRetVoid(llvm_builder());
+					}
 				};
 				if i + 1 < body.len() {
 					panic!("ERROR: some statements in function `{name}` are unreachable")

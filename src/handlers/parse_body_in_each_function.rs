@@ -70,7 +70,7 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
                     format!("{}.{overload_idx}", fun.name)
                 };
 
-                let args = fun.overloads[overload_idx].args.iter().map(|x| x.ty.llvm_type()).collect();
+                let args = fun.overloads[overload_idx].args.iter().map(|x| x.llvm_type()).collect();
                 let ret_ty = fun.overloads[overload_idx].ret_ty.as_determined();
 
                 fun.overloads[overload_idx].llvm_fun = Some(create_llvm_fun(&overload_name, args, ret_ty));

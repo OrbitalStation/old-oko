@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
 
@@ -18,6 +19,12 @@ pub struct FunDefOverloadablePart {
 	pub vals: HashMap <usize, VariableInfo>
 }
 
+impl FunDefOverloadablePart {
+	pub fn is_ret_by_value(&self) -> bool {
+		self.ret_ty.as_determined().is_copy()
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct VariableInfo {
 	pub name: String,
@@ -30,6 +37,22 @@ pub struct VariableInfo {
 pub struct FunArg {
 	pub name: String,
 	pub ty: Type
+}
+
+impl FunArg {
+	#[inline]
+	pub fn is_by_value(&self) -> bool {
+		self.ty.is_copy()
+	}
+
+	pub fn llvm_type(&self) -> LLVMTypeRef {
+		let ty = self.ty.llvm_type();
+		if self.is_by_value() {
+			ty
+		} else {
+			unsafe { LLVMPointerType(ty, 0) }
+		}
+	}
 }
 
 #[derive(Debug, Clone)]

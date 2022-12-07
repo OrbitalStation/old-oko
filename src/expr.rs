@@ -79,7 +79,12 @@ pub enum ExprKind {
 		cond: Box <Expr>,
 		yes: Vec <FunStmt>,
 		no: Vec <FunStmt>
-	}
+	},
+	// AccessField {
+	// 	i: Box <Expr>,
+	// 	def: &'static Vec <StructField>,
+	// 	field: usize
+	// }
 }
 
 impl ExprKind {
@@ -172,7 +177,14 @@ fn build_fun_call(fun_stmt_index: usize, fun_overload: usize, args: &Vec <Expr>,
 	};
 	let overload = &fun.overloads[fun_overload];
 	let mut args = args.iter().map(|x| x.to_llvm_value(stmts, fun_name).0).collect::<Vec <_>>();
-	unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
+	if overload.is_ret_by_value() {
+		unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
+	} else {
+		let ret = unsafe { LLVMBuildAlloca(llvm_builder(), overload.ret_ty.as_determined().llvm_type(), b"\0".as_ptr() as _) };
+		args.insert(0, ret);
+		unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) };
+		ret
+	}
 }
 
 fn build_extern_fun_call(fun_stmt_index: usize, args: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
@@ -258,6 +270,12 @@ unsafe fn check_if_previous_basic_block_is_terminated_and_terminate_if_not(bb: L
 		LLVMBuildBr(llvm_builder(), jmp);
 	}
 }
+
+// fn build_access(i: &Expr, def: &Vec <StructField>, idx: usize, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
+// 	let ivalue = i.to_llvm_value(stmts, fun_name).0;
+// 	let ptr = LLVMRef
+// 	LLVMBuildGEP(llvm_builder(), )
+// }
 
 #[derive(Debug, Clone)]
 pub struct Expr {

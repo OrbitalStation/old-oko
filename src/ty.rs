@@ -58,7 +58,7 @@ pub struct TypePointers {
 	/// T -> 0
 	pub len: u8,
 
-	/// How much of those pointers are mutable
+	/// Which of those pointers are mutable
 	/// **T -> 0b00
 	/// ^T -> 0b1
 	/// *^^**^T -> 0b011001
@@ -177,6 +177,15 @@ impl Debug for Type {
 impl Type {
 	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
 
+	pub fn is_copy(&self) -> bool {
+		match &self.kind {
+			TypeKind::Integer | TypeKind::Pointer { .. } | TypeKind::Reference { .. } => true,
+			TypeKind::Scalar { index} => matches!(Self::baked()[*index].kind, BakedTypeKind::Builtin(_)),
+			TypeKind::Tuple { types } => types.is_empty(),
+			TypeKind::Array { .. } => false
+		}
+	}
+
 	pub fn get_builtin(name: &str) -> Self {
 		match Self::type_list() {
 			TypeList::Baked(baked) => {
@@ -188,11 +197,11 @@ impl Type {
 		}
 	}
 
-	// pub fn get_fields_of_struct(&self) -> Option <&Vec <StructField>> {
+	// pub fn get_fields_of_struct(&self) -> Option <&'static Vec <StructField>> {
 	// 	if let TypeKind::Scalar { index } = self.kind {
 	// 		match Self::type_list() {
 	// 			TypeList::Baked(baked) => match &baked[index].kind {
-	// 				BakedTypeKind::Ordinary(def) => if let TypeDefKind::Struct { fields } = def {
+	// 				BakedTypeKind::Ordinary(def) => if let TypeDefKind::Struct { fields } = &def.kind {
 	// 					return Some(fields)
 	// 				},
 	// 				_ => ()
@@ -305,6 +314,13 @@ impl Type {
 	pub fn raw() -> &'static mut Vec <RawType> {
 		match Self::type_list() {
 			TypeList::Raw(raw) => raw,
+			_ => unimplemented!()
+		}
+	}
+
+	pub fn baked() -> &'static mut Vec <BakedType> {
+		match Self::type_list() {
+			TypeList::Baked(baked) => baked,
 			_ => unimplemented!()
 		}
 	}

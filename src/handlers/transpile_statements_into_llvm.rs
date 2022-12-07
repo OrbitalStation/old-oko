@@ -71,8 +71,11 @@ fn create_typedef(typedef: &TypeDefIndex) {
 pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: &Type) -> LLVMValueRef {
 	let ret_ty = if *ret_ty == Type::UNIT_TUPLE {
 		unsafe { LLVMVoidTypeInContext(llvm_context()) }
-	} else {
+	} else if ret_ty.is_copy() {
 		ret_ty.llvm_type()
+	} else {
+		args.insert(0, unsafe { LLVMPointerType(ret_ty.llvm_type(), 0) });
+		unsafe { LLVMVoidTypeInContext(llvm_context()) }
 	};
 	let fun_type = unsafe { LLVMFunctionType(ret_ty, args.as_mut_ptr(), args.len() as _, 0) };
 	let name = CString::new(name).unwrap();
