@@ -9,19 +9,10 @@ pass = ()
 
 eqq = pass
 
-fibLong n: u64 -> u64
-	if n == 0 or n == 1
-		return 1
-	else
-		return (fibLong n - 1) + fibLong n - 2
-
-fibShort n: u64 -> u64
-	return if n == 0 or n == 1 do 1 else (fibShort n - 1) + fibShort n - 2
-
 * Sadly not smart enough to infer the type of the function on its own
-fibShorter n: u64 -> u64 = if n == 0 or n == 1 do 1 else (fibShorter n - 1) + fibShorter n - 2
+fib n: u64 -> u64 = if n == 0 or n == 1 do 1 else (fib n - 1) + fib n - 2
 
-identity x: i32 -> i32 = x
+identity x: i32 = x
 
 drop x: i32 = pass
 

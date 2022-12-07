@@ -68,14 +68,18 @@ peg::parser! { grammar okolang() for str {
 	rule ident() -> String
 		= ident:$(letter() (letter() / digit())*) { ident.to_string() }
 
-	rule ty() -> Type
-		= ptrs:$(['*' | '^']*) name:ident() { Type::meet_new_raw_scalar(ptrs, name, None) }
+	rule __non_ptr_ty() -> Type
+		= name:ident() { Type::meet_new_raw_scalar(name, None) }
 		/ "(" _ types:(ty() ** (_ "," _)) _ ")" { Type::from_kind(TypeKind::Tuple { types }) }
+
+	rule ty() -> Type
+		= ptrs:$(['*' | '^']+) ty:__non_ptr_ty() { Type::meet_new_pointer(ty, ptrs) }
+		/ ty:__non_ptr_ty() { ty }
 
 	rule type_definition() -> TypeDefIndex
 		= "ty" __ name:ident() kind:type_definition_body()
 	{
-		let ty = Type::meet_new_raw_scalar("", name.clone(), Some(TypeDef {
+		let ty = Type::meet_new_raw_scalar(name.clone(), Some(TypeDef {
 			name,
 			kind
 		}));

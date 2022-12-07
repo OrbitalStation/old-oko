@@ -112,10 +112,11 @@ impl PartialEq for Type {
 	}
 }
 
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum TypeKind {
-	Scalar {
-		index: usize,
+	Scalar { index: usize },
+	Pointer {
+		ty: Box <Type>,
 		ptrs: TypePointers
 	},
 	Tuple { types: Vec <Type> },
@@ -125,15 +126,15 @@ pub enum TypeKind {
 impl Debug for Type {
 	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
 		match &self.kind {
-			TypeKind::Scalar {
-				index,
-				ptrs
-			} => {
-				ptrs.fmt(f)?;
+			TypeKind::Scalar { index } => {
 				match Self::type_list() {
 					TypeList::Raw(raw) => f.write_str(raw[*index].name()),
 					TypeList::Baked(baked) => f.write_str(baked[*index].name())
 				}
+			},
+			TypeKind::Pointer { ty, ptrs } => {
+				ptrs.fmt(f)?;
+				ty.fmt(f)
 			},
 			TypeKind::Tuple { types } => {
 				f.write_char('(')?;
@@ -161,11 +162,7 @@ impl Type {
 		match Self::type_list() {
 			TypeList::Baked(baked) => {
 				Self::from_kind(TypeKind::Scalar {
-					index: baked.iter().enumerate().find(|(_, x)| x.name() == name).unwrap().0,
-					ptrs: TypePointers {
-						len: 0,
-						muts: 0
-					},
+					index: baked.iter().enumerate().find(|(_, x)| x.name() == name).unwrap().0
 				})
 			},
 			_ => unimplemented!()
@@ -185,10 +182,6 @@ impl Type {
 	}
 
 	pub fn try_implicitly_convert(&mut self, other: &Self, expr: Option <&mut ExprKind>) -> bool {
-		if !other.is_signed() && !other.is_unsigned() {
-			return false
-		}
-
 		match &self.kind {
 			TypeKind::Integer => match &other.kind {
 				TypeKind::Integer => false,
@@ -212,16 +205,12 @@ impl Type {
 
 	fn __is_builtin_smth(&self, f: for <'a> fn(&'a BuiltinTypeKind) -> bool) -> bool {
 		match &self.kind {
-			TypeKind::Scalar { index, ptrs } => if ptrs.len != 0 {
-				false
-			} else {
-				match Self::type_list() {
-					TypeList::Baked(baked) => match &baked[*index].kind {
-						BakedTypeKind::Builtin(idx) => f(&BUILTIN_TYPES[*idx].kind),
-						_ => false
-					},
-					_ => unimplemented!()
-				}
+			TypeKind::Scalar { index } => match Self::type_list() {
+				TypeList::Baked(baked) => match &baked[*index].kind {
+					BakedTypeKind::Builtin(idx) => f(&BUILTIN_TYPES[*idx].kind),
+					_ => false
+				},
+				_ => unimplemented!()
 			},
 			_ => false
 		}
@@ -245,11 +234,14 @@ impl Type {
 		}
 
 		match &self.kind {
-			TypeKind::Scalar { index, ptrs } => {
-				let mut ty = match Self::type_list() {
+			TypeKind::Scalar { index } => {
+				match Self::type_list() {
 					TypeList::Baked(baked) => baked[*index].llvm_type,
 					TypeList::Raw(_) => unimplemented!()
-				};
+				}
+			},
+			TypeKind::Pointer { ty, ptrs } => {
+				let mut ty = ty.llvm_type();
 				for _ in 0..ptrs.len {
 					// No distinction between mutable and const pointers
 					ty = unsafe { LLVMPointerType(ty, 0) }
@@ -283,7 +275,7 @@ impl Type {
 		}
 	}
 
-	pub fn meet_new_raw_scalar(ptrs: &str, name: String, typedef: Option <TypeDef>) -> Self {
+	pub fn meet_new_raw_scalar(name: String, typedef: Option <TypeDef>) -> Self {
 		Self::from_kind(TypeKind::Scalar {
 			index: match Self::raw().iter_mut().enumerate().find(|(_, ty)| ty.name() == name) {
 				Some((idx, ty)) => {
@@ -303,8 +295,14 @@ impl Type {
 					});
 					Self::raw().len() - 1
 				}
-			},
-			ptrs: TypePointers::from(ptrs)
+			}
+		})
+	}
+
+	pub fn meet_new_pointer(ty: Self, ptrs: &str) -> Self {
+		Self::from_kind(TypeKind::Pointer {
+			ty: Box::new(ty),
+			ptrs: TypePointers::from(ptrs),
 		})
 	}
 

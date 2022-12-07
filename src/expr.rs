@@ -87,8 +87,10 @@ impl ExprKind {
 }
 
 fn build_literal(lit: &ExprLiteral, ty: &Type) -> LLVMValueRef {
-	match lit {
-		ExprLiteral::Integer(int) => unsafe { LLVMConstInt(ty.llvm_type(), core::mem::transmute(*int as i64), (*int > 0) as _) }
+	unsafe {
+		match lit {
+			ExprLiteral::Integer(int) => LLVMConstInt(ty.llvm_type(), core::mem::transmute(*int as i64), (*int > 0) as _)
+		}
 	}
 }
 

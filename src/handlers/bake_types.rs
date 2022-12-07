@@ -2,7 +2,7 @@ use crate::*;
 
 pub fn bake_types() {
     for builtin in BUILTIN_TYPES {
-        Type::meet_new_raw_scalar("", builtin.name.to_string(), None);
+        Type::meet_new_raw_scalar(builtin.name.to_string(), None);
     }
 
     let types = core::mem::replace(match Type::type_list() {
