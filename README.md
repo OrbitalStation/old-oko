@@ -91,12 +91,16 @@ drop x: T
 `x -= 2`
 
 ## Binary operators
-`a + b`
-`x + y × z`
-`(x + y) ÷ z`
-`q - p`
-`a == b`
-`a != b`
+```
+a + b
+x + y × z
+(x + y) ÷ z
+q - p
+a == b
+a != b
+a and b
+a or b
+```
 
 ## Ifs
 ```

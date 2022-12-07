@@ -29,6 +29,9 @@ pub enum BinOpType {
 
 	Eq,
 	NotEq,
+
+	And,
+	Or
 }
 
 impl Debug for BinOpType {
@@ -39,7 +42,9 @@ impl Debug for BinOpType {
 			Self::Mul => "*",
 			Self::Div => "/",
 			Self::Eq => "==",
-			Self::NotEq => "!="
+			Self::NotEq => "!=",
+			Self::And => "and",
+			Self::Or => "or"
 		})
 	}
 }
@@ -104,7 +109,9 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt], fun_
 				panic!("bad operand for division")
 			},
 			BinOpType::Eq => LLVMBuildICmp(llvm_builder(), LLVMIntPredicate::LLVMIntEQ, left, right, name),
-			BinOpType::NotEq => LLVMBuildICmp(llvm_builder(), LLVMIntPredicate::LLVMIntNE, left, right, name)
+			BinOpType::NotEq => LLVMBuildICmp(llvm_builder(), LLVMIntPredicate::LLVMIntNE, left, right, name),
+			BinOpType::And => LLVMBuildAnd(llvm_builder(), left, right, name),
+			BinOpType::Or => LLVMBuildOr(llvm_builder(), left, right, name)
 		}
 	}
 }

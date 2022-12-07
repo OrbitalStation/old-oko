@@ -15,7 +15,7 @@ macro_rules! open_option_in_arg {
 	}
 }
 
-fn _check2arithmetic(mut x: Expr, mut y: Expr, op: BinOpType, ty: impl for <'a> Fn(&'a Expr) -> Type) -> Expr {
+fn _check2arithmetic(mut x: Expr, mut y: Expr, op: BinOpType, ty: impl for <'a> FnOnce(&'a Expr) -> Type) -> Expr {
 	assert!(x.ty.eq_implicit(&mut y.ty, Some(&mut x.kind), Some(&mut y.kind)), "cannot apply `{:?}` to different types", op);
 	let ty = ty(&x);
 	Expr {
@@ -35,6 +35,13 @@ fn check2arithmetic(x: Expr, y: Expr, op: BinOpType) -> Expr {
 
 fn check2arithmetic_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
 	_check2arithmetic(x, y, op, |_| Type::get_builtin("bool"))
+}
+
+fn check2full_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
+	let bool = Type::get_builtin("bool");
+	assert_eq!(x.ty, bool, "cannot apply `{:?}` to non-boolean type", op);
+	assert_eq!(y.ty, bool, "cannot apply `{:?}` to non-boolean type", op);
+	_check2arithmetic(x, y, op, |_| bool)
 }
 
 peg::parser! { grammar okolang() for str {
@@ -284,6 +291,9 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
+		x:(@) __ "and" __ y:@ { check2full_bool(x, y, BinOpType::And) }
+		x:(@) __ "or" __ y:@ { check2full_bool(x, y, BinOpType::Or) }
+		--
 		x:(@) __expr1_bin_op(<"==">, input) y:@ { check2arithmetic_bool(x, y, BinOpType::Eq) }
 		x:(@) __expr1_bin_op(<"!=">, input) y:@ { check2arithmetic_bool(x, y, BinOpType::NotEq) }
 		--
