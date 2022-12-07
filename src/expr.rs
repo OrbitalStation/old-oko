@@ -181,7 +181,7 @@ fn build_fun_call(fun_stmt_index: usize, fun_overload: usize, args: &Vec <Expr>,
 		unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 	} else {
 		let ret = unsafe { LLVMBuildAlloca(llvm_builder(), overload.ret_ty.as_determined().llvm_type(), b"\0".as_ptr() as _) };
-		args.insert(0, ret);
+		args.push(ret);
 		unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) };
 		ret
 	}

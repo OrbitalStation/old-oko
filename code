@@ -28,5 +28,5 @@ ty Wrapper = x: i32
 
 unwrap x: Wrapper = x
 
-test x: Wrapper
-	y := unwrap x
+test x: Wrapper -> Wrapper
+	return unwrap x

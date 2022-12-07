@@ -74,7 +74,7 @@ pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: &Type) -
 	} else if ret_ty.is_copy() {
 		ret_ty.llvm_type()
 	} else {
-		args.insert(0, unsafe { LLVMPointerType(ret_ty.llvm_type(), 0) });
+		args.push(unsafe { LLVMPointerType(ret_ty.llvm_type(), 0) });
 		unsafe { LLVMVoidTypeInContext(llvm_context()) }
 	};
 	let fun_type = unsafe { LLVMFunctionType(ret_ty, args.as_mut_ptr(), args.len() as _, 0) };
