@@ -24,9 +24,11 @@ drop x: [i32 x 4] = pass
 
 add x y: u8 = x + y
 
-ty Wrapper = x: i32
+ty InnerWrapper = x y z w: i8
 
-unwrap x: Wrapper = x
+ty Wrapper = x: i32 + y: InnerWrapper
 
-test x: Wrapper -> Wrapper
-	return unwrap x
+unwrap2 x: Wrapper = x.y.z
+
+test x: Wrapper -> i8
+	return unwrap2 x

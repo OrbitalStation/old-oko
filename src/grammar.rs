@@ -44,6 +44,23 @@ fn check2full_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
 	_check2arithmetic(x, y, op, |_| bool)
 }
 
+fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
+	let mut cur: Expr = __expr1_variable(&fields[0], input).expect("unknown variable");
+	for next in fields.iter().skip(1) {
+		let fields = cur.ty.get_fields_of_struct().expect("expected a structure");
+		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == *next).expect("no field with such a name found");
+		cur = Expr {
+			kind: ExprKind::AccessField {
+				i: Box::new(cur),
+				def: fields,
+				field: idx,
+			},
+			ty: field.ty.clone(),
+		}
+	}
+	cur
+}
+
 peg::parser! { grammar okolang() for str {
 
 	rule __whitespace_single() = quiet!{[' ' | '\t']}
@@ -97,9 +114,9 @@ peg::parser! { grammar okolang() for str {
 
 	rule type_definition_body() -> TypeDefKind = kind:(
 		typedef_opaque()
+		/ typedef_inline_struct()
 		/ typedef_inline_enum()
 		/ typedef_wide_enum()
-		/ typedef_inline_struct()
 		/ typedef_wide_struct()
 	) { kind }
 
@@ -151,7 +168,7 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule __expr1_variable(input: ParseFunBodyInput) -> Expr = name:ident() {?
+	pub(in crate) rule __expr1_variable(input: ParseFunBodyInput) -> Expr = name:ident() {?
 		Ok(if let Some((var_index, arg)) = input.cur_fun().overloads[input.fun_overload].args.iter().enumerate().find(|(_, x)| x.name == name) {
 			Expr {
 				kind: ExprKind::Variable(ExprKindVariableLocation::FunArg {
@@ -318,24 +335,12 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	// rule __expr1_access_member(input: ParseFunBodyInput, expr: Expr) -> Expr
-	// 	= field:ident()
-	// {?
-	// 	let fields = expr.ty.get_fields_of_struct().ok_or("member access")?;
-	// 	let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == field).ok_or("member access")?;
-	// 	Ok(Expr {
-	// 		kind: ExprKind::AccessField {
-	// 			i: Box::new(expr),
-	// 			def: fields,
-	// 			field: idx
-	// 		},
-	// 		ty: field.ty.clone()
-	// 	})
-	// }
-	//
-	// // rule __expr1_access_inner() -> Expr
-	// // 	= expr:expr(input) __ "." __ member:__expr1_access_member(input, expr)
-	// // { member }
+	rule __expr1_access_inner(fields: Expr) -> Expr
+		= "" { fields }
+
+	rule __expr1_access(input: ParseFunBodyInput) -> Expr
+		= fields:ident() ** <2,> (_ "." _) e:__expr1_access_inner(access_field_inner(input, fields))
+	{ e }
 
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
 		x:(@) __ "and" __ y:@ { check2full_bool(x, y, BinOpType::And) }
@@ -352,6 +357,7 @@ peg::parser! { grammar okolang() for str {
 		--
 		x:__expr1_fun_call(input) { x }
 		x:__expr1_extern_fun_call(input) { x }
+		x:__expr1_access(input) { x }
 		--
 		"(" _ ")" { Expr::UNIT_TUPLE }
 		"(" _ x:expr(input) _ ")" { x }

@@ -109,6 +109,11 @@ a and b
 a or b
 ```
 
+## Field access
+`structName.fieldName`
+`a.b.c`
+`wrapper.inner`
+
 ## Ifs
 ```
 if <cond>

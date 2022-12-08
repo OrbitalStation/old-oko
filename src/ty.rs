@@ -197,20 +197,20 @@ impl Type {
 		}
 	}
 
-	// pub fn get_fields_of_struct(&self) -> Option <&'static Vec <StructField>> {
-	// 	if let TypeKind::Scalar { index } = self.kind {
-	// 		match Self::type_list() {
-	// 			TypeList::Baked(baked) => match &baked[index].kind {
-	// 				BakedTypeKind::Ordinary(def) => if let TypeDefKind::Struct { fields } = &def.kind {
-	// 					return Some(fields)
-	// 				},
-	// 				_ => ()
-	// 			},
-	// 			_ => ()
-	// 		}
-	// 	}
-	// 	None
-	// }
+	pub fn get_fields_of_struct(&self) -> Option <&'static Vec <StructField>> {
+		if let TypeKind::Scalar { index } = self.kind {
+			match Self::type_list() {
+				TypeList::Baked(baked) => match &baked[index].kind {
+					BakedTypeKind::Ordinary(def) => if let TypeDefKind::Struct { fields } = &def.kind {
+						return Some(fields)
+					},
+					_ => ()
+				},
+				_ => ()
+			}
+		}
+		None
+	}
 
 	pub fn eq_implicit(&mut self, other: &mut Self, expr1: Option <&mut ExprKind>, expr2: Option <&mut ExprKind>) -> bool {
 		if self == other {
