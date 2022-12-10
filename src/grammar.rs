@@ -50,11 +50,13 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 		let fields = cur.ty.get_fields_of_struct().expect("expected a structure");
 		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == *next).expect("no field with such a name found");
 		cur = Expr {
-			kind: ExprKind::Variable(ExprKindVariableLocation::AccessField {
-				i: Box::new(cur),
-				def: fields,
-				field: idx
-			}),
+			kind: ExprKind::Variable {
+				location: ExprKindVariableLocation::AccessField {
+					i: Box::new(cur),
+					def: fields,
+					field: idx
+				}
+			},
 			ty: field.ty.clone(),
 		}
 	}
@@ -171,20 +173,24 @@ peg::parser! { grammar okolang() for str {
 	pub(in crate) rule __expr1_variable(input: ParseFunBodyInput) -> Expr = name:ident() {?
 		Ok(if let Some((var_index, arg)) = input.cur_fun().overloads[input.fun_overload].args.iter().enumerate().find(|(_, x)| x.name == name) {
 			Expr {
-				kind: ExprKind::Variable(ExprKindVariableLocation::FunArg {
-					fun_stmt_index: input.cur_stmt,
-					fun_overload: input.fun_overload,
-					var_index
-				}),
+				kind: ExprKind::Variable {
+					location: ExprKindVariableLocation::FunArg {
+						fun_stmt_index: input.cur_stmt,
+						fun_overload: input.fun_overload,
+						var_index
+					}
+				},
 				ty: arg.ty.clone()
 			}
 		} else if let Some((line, info)) = input.cur_fun().overloads[input.fun_overload].vals.iter().find(|(line, x)| **line < input.line() && x.name == name) {
 			Expr {
-				kind: ExprKind::Variable(ExprKindVariableLocation::Val {
-					fun_stmt_index: input.cur_stmt,
-					fun_overload: input.fun_overload,
-					line_def: *line
-				}),
+				kind: ExprKind::Variable {
+					location: ExprKindVariableLocation::Val {
+						fun_stmt_index: input.cur_stmt,
+						fun_overload: input.fun_overload,
+						line_def: *line
+					}
+				},
 				ty: info.init.ty.clone()
 			}
 		} else {

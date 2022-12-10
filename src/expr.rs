@@ -63,7 +63,9 @@ pub enum ExprLiteral {
 #[derive(Debug, Clone)]
 #[repr(u8)]
 pub enum ExprKind {
-	Variable(ExprKindVariableLocation),
+	Variable {
+		location: ExprKindVariableLocation
+	},
 	Tuple(Vec <Expr>),
 	Literal(ExprLiteral),
 	FunCall {
@@ -304,7 +306,7 @@ impl Expr {
 
 	fn _to_llvm(&self, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> (LLVMValueRef, /* terminated */ bool) {
 		(match &self.kind {
-			ExprKind::Variable(location) => build_variable(location, stmts, is_lvalue, fun_name),
+			ExprKind::Variable { location } => build_variable(location, stmts, is_lvalue, fun_name),
 
 			_ if is_lvalue => panic!("expected an lvalue"),
 
