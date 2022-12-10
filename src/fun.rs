@@ -30,13 +30,15 @@ pub struct VariableInfo {
 	pub name: String,
 	pub init: Expr,
 	pub mutable: bool,
-	pub llvm_value: Option <LLVMValueRef>
+	pub llvm_value: Option <LLVMValueRef>,
+	pub state: VariableState
 }
 
 #[derive(Debug, Clone)]
 pub struct FunArg {
 	pub name: String,
-	pub ty: Type
+	pub ty: Type,
+	pub state: VariableState
 }
 
 impl FunArg {

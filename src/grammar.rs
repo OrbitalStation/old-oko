@@ -63,6 +63,15 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 	cur
 }
 
+fn assignment(input: ParseFunBodyInput, lvalue: Expr, new: Expr) -> (FunStmt, Type) {
+	// if !lvalue.ty.is_copy() {
+	//     // TODO! DROP lvalue and do not forget that drop may occur only on fully valid values
+	// }
+
+	new.mark_as_moved_and_panic_if_already(input);
+	(FunStmt::Assignment { lvalue, new }, Type::UNIT_TUPLE)
+}
+
 peg::parser! { grammar okolang() for str {
 
 	rule __whitespace_single() = quiet!{[' ' | '\t']}
@@ -232,6 +241,10 @@ peg::parser! { grammar okolang() for str {
 				}
 			}
 
+			for arg in &args {
+				arg.mark_as_moved_and_panic_if_already(input)
+			}
+
 			return Ok(Expr {
 				kind: ExprKind::FunCall {
 					fun_stmt_index,
@@ -252,6 +265,7 @@ peg::parser! { grammar okolang() for str {
 		let args = args.unwrap_or(vec![]);
 		assert_eq!(args.len(), fun.args.len(), "wrong number of arguments");
 		for (idx, arg) in args.iter().enumerate() {
+			arg.mark_as_moved_and_panic_if_already(input);
 			assert_eq!(arg.ty, fun.args[idx], "incorrect type of an argument")
 		}
 		Ok(Expr {
@@ -305,6 +319,8 @@ peg::parser! { grammar okolang() for str {
 				if let Some(no) = no_last {
 					let cond = yes.ty.eq_implicit(&mut no.ty, Some(&mut yes.kind), Some(&mut no.kind));
 					let ty = yes.ty.clone();
+					yes.mark_as_moved_and_panic_if_already(input);
+					no.mark_as_moved_and_panic_if_already(input);
 					(cond, ty)
 				} else {
 					(yes.ty == Type::UNIT_TUPLE, Type::UNIT_TUPLE)
@@ -393,6 +409,7 @@ peg::parser! { grammar okolang() for str {
 	rule __fun_stmt_return(input: ParseFunBodyInput) -> (FunStmt, Type)
 		= "return" expr:__fun_stmt_get_return_val(input)
 	{
+		expr.mark_as_moved_and_panic_if_already(input);
 		let fun = input.cur_fun_mut();
 		let mut expr = expr;
 		match &mut fun.overloads[input.fun_overload].ret_ty {
@@ -415,8 +432,10 @@ peg::parser! { grammar okolang() for str {
 	rule __fun_stmt_val_def(input: ParseFunBodyInput) -> (FunStmt, Type)
 		= mutable:("$")? name:ident() _ ":=" _ init:expr(input)
 	{
+		init.mark_as_moved_and_panic_if_already(input);
 		input.cur_fun_mut().overloads[input.fun_overload].vals.insert(input.line(), VariableInfo {
 			name,
+			state: VariableState::valid(&init.ty),
 			init,
 			mutable: mutable.is_some(),
 			llvm_value: None
@@ -425,10 +444,10 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule __fun_stmt_assign_short_assign <T> (input: ParseFunBodyInput, op: rule <T>, kind: BinOpType) -> (FunStmt, Type)
-		= lvalue:expr(input) _ op() "=" _ new:expr(input) { (FunStmt::Assignment { lvalue: lvalue.clone(), new: check2arithmetic(lvalue, new, kind) }, Type::UNIT_TUPLE) }
+		= lvalue:expr(input) _ op() "=" _ new:expr(input) { assignment(input, lvalue.clone(), check2arithmetic(lvalue, new, kind)) }
 
 	rule __fun_stmt_assign(input: ParseFunBodyInput) -> (FunStmt, Type)
-		= lvalue:expr(input) _ "=" _ new:expr(input) { (FunStmt::Assignment { lvalue, new }, Type::UNIT_TUPLE) }
+		= lvalue:expr(input) _ "=" _ new:expr(input) { assignment(input, lvalue, new) }
 		/ x:__fun_stmt_assign_short_assign(input, <"+">, BinOpType::Add) { x }
 		/ x:__fun_stmt_assign_short_assign(input, <"-">, BinOpType::Sub) { x }
 		/ x:__fun_stmt_assign_short_assign(input, <"÷">, BinOpType::Div) { x }
@@ -449,7 +468,8 @@ peg::parser! { grammar okolang() for str {
 	{
 		names.into_iter().map(move |name| FunArg {
 			name,
-			ty: ty.clone()
+			ty: ty.clone(),
+			state: VariableState::Scalar(VariableStateScalar::Valid)
 		})
 	}
 

@@ -24,6 +24,47 @@ pub enum ExprKindVariableLocation {
 	}
 }
 
+#[derive(Debug, Clone)]
+pub enum VariableState {
+	Scalar(VariableStateScalar),
+	Struct(VariableStateStruct)
+}
+
+impl VariableState {
+	pub fn valid(ty: &Type) -> Self {
+		if let Some(fields) = ty.get_fields_of_struct() {
+			Self::new_struct(fields.len())
+		} else {
+			VariableState::Scalar(VariableStateScalar::Valid)
+		}
+	}
+
+	pub fn new_struct(fields: usize) -> Self {
+		VariableState::Struct(VariableStateStruct {
+			fields_states: vec![VariableState::Scalar(VariableStateScalar::Valid); fields]
+		})
+	}
+
+	pub fn is_fully_valid(&self) -> bool {
+		match self {
+			Self::Scalar(scalar) => *scalar == VariableStateScalar::Valid,
+			Self::Struct(s) => s.fields_states.iter().find(|x| !x.is_fully_valid()).is_none()
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[repr(u8)]
+pub enum VariableStateScalar {
+	Moved,
+	Valid
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableStateStruct {
+	pub fields_states: Vec <VariableState>
+}
+
 #[derive(Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
 pub enum BinOpType {
@@ -303,6 +344,72 @@ impl Expr {
 		kind: ExprKind::UNIT_TUPLE,
 		ty: Type::UNIT_TUPLE
 	};
+
+	/// Returns variable state on normal variables
+	/// and returns the state of the mother struct
+	pub fn get_variable_state <'a> (&self, input: ParseFunBodyInput <'a>) -> &'a mut VariableState {
+		match &self.kind {
+			ExprKind::Variable { location } => match location {
+				ExprKindVariableLocation::FunArg { fun_stmt_index, fun_overload, var_index } => {
+					&mut input.fun_at_idx(*fun_stmt_index).overloads[*fun_overload].args[*var_index].state
+				},
+				ExprKindVariableLocation::Val { fun_stmt_index, fun_overload, line_def } => {
+					&mut input.fun_at_idx(*fun_stmt_index).overloads[*fun_overload].vals.get_mut(line_def).unwrap().state
+				},
+				ExprKindVariableLocation::AccessField { i, field, def } => {
+					let state = i.get_variable_state(input);
+					match state {
+						VariableState::Struct(struc) => {
+							&mut struc.fields_states[*field]
+						},
+						VariableState::Scalar(x) => {
+							assert_ne!(*x, VariableStateScalar::Moved, "variable already moved");
+							*state = VariableState::new_struct(def.len());
+							match state {
+								VariableState::Struct(x) => &mut x.fields_states[*field],
+								_ => unreachable!()
+							}
+						}
+					}
+				}
+			},
+			_ => unimplemented!()
+		}
+	}
+
+	/*
+	* Rough Oko equivalent
+
+	__markState state: $VariableState
+		assert state.isFullyValid, "variable is already partially/fully moved"
+		*state = VariableState.Scalar VariableStateScalar.Moved
+
+	* Values of only non-copy types can be moved
+	markAsMovedAndPanicIfAlready.$ Expr, input: ParseFunBodyInput = if i.ty.isCopy do return else choose $i.kind
+		Variable ... => __markState i.getVariableState input
+		Tuple elems | FunCall elems@(args) | ExternFunCall elems@(args) => for elem in elems do elem.markAsMovedAndPanicIfAlready input
+		Literal ... | BinOp ... | If ... => pass
+
+	*/
+	pub fn mark_as_moved_and_panic_if_already(&self, input: ParseFunBodyInput) {
+		if self.ty.is_copy() {
+			/* Values of only non-copy types can be moved */
+			return
+		}
+
+		fn mark_state(state: &mut VariableState) {
+			assert!(state.is_fully_valid(), "variable is already partially/fully moved");
+			*state = VariableState::Scalar(VariableStateScalar::Moved)
+		}
+
+		match &self.kind {
+			ExprKind::Variable { .. } => mark_state(self.get_variable_state(input)),
+			ExprKind::Tuple(elems) | ExprKind::FunCall { args: elems, ..} | ExprKind::ExternFunCall { args: elems, .. } => for elem in elems {
+				elem.mark_as_moved_and_panic_if_already(input)
+			},
+			ExprKind::Literal(_) | ExprKind::BinOp { .. } | ExprKind::If { .. } => { /* ignore */ },
+		}
+	}
 
 	fn _to_llvm(&self, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> (LLVMValueRef, /* terminated */ bool) {
 		(match &self.kind {

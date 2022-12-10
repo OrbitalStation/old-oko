@@ -28,7 +28,12 @@ ty InnerWrapper = x y z w: i8
 
 ty Wrapper = x: i32 + y: InnerWrapper
 
-unwrap2 x: Wrapper = x.y.z
+unwrap x: Wrapper = x.y.z
 
 test x: Wrapper -> i8
-	return unwrap2 x
+	y := x.x
+	return unwrap x
+
+* failTest x: Wrapper -> i8
+*	y := x
+*	return unwrap x

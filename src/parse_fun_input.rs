@@ -4,7 +4,7 @@ pub struct ParseFunBodyInputStruct {
 	pub cur_stmt: usize,
 	pub fun_overload: usize,
 	line: *mut usize,
-	pub stmts: *mut [Stmt]
+	stmts: *mut [Stmt]
 }
 
 impl ParseFunBodyInputStruct {
@@ -27,11 +27,11 @@ impl ParseFunBodyInputStruct {
 	}
 
 	pub fn cur(&self) -> &Stmt {
-		unsafe { &((*self.stmts)[self.cur_stmt]) }
+		&self.stmts()[self.cur_stmt]
 	}
 
 	pub fn cur_mut(&self) -> &mut Stmt {
-		unsafe { &mut ((*self.stmts)[self.cur_stmt]) }
+		&mut self.stmts_mut()[self.cur_stmt]
 	}
 
 	pub fn cur_fun(&self) -> &FunDef {
@@ -49,14 +49,14 @@ impl ParseFunBodyInputStruct {
 	}
 
 	pub fn fun_by_name(&self, name: &str) -> Option <(usize, &FunDef)> {
-		unsafe { &*self.stmts }.iter().enumerate().find_map(|(idx, fun)| match fun {
+		self.stmts().iter().enumerate().find_map(|(idx, fun)| match fun {
 			Stmt::FunDef(fun) if fun.name == name => Some((idx, fun)),
 			_ => None
 		})
 	}
 
 	pub fn extern_fun_by_name(&self, name: &str) -> Option <(usize, &ExternFun)> {
-		unsafe { &*self.stmts }.iter().enumerate().find_map(|(idx, fun)| match fun {
+		self.stmts().iter().enumerate().find_map(|(idx, fun)| match fun {
 			Stmt::ExternFun(fun) if fun.name == name => Some((idx, fun)),
 			_ => None
 		})
@@ -72,6 +72,21 @@ impl ParseFunBodyInputStruct {
 
 	pub fn next_line(&self) {
 		unsafe { *self.line += 1 }
+	}
+
+	pub fn stmts_mut(&self) -> &mut [Stmt] {
+		unsafe { &mut *self.stmts }
+	}
+
+	pub fn stmts(&self) -> &[Stmt] {
+		unsafe { &*self.stmts }
+	}
+
+	pub fn fun_at_idx(&self, idx: usize) -> &mut FunDef {
+		match &mut self.stmts_mut()[idx] {
+			Stmt::FunDef(fundef) => fundef,
+			_ => unimplemented!()
+		}
 	}
 }
 

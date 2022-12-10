@@ -182,7 +182,7 @@ impl Type {
 			TypeKind::Integer | TypeKind::Pointer { .. } | TypeKind::Reference { .. } => true,
 			TypeKind::Scalar { index} => matches!(Self::baked()[*index].kind, BakedTypeKind::Builtin(_)),
 			TypeKind::Tuple { types } => types.is_empty(),
-			TypeKind::Array { .. } => false
+			TypeKind::Array { size, .. } => *size == 0
 		}
 	}
 
@@ -210,6 +210,11 @@ impl Type {
 			}
 		}
 		None
+	}
+
+	#[inline]
+	pub fn is_struct(&self) -> bool {
+		self.get_fields_of_struct().is_some()
 	}
 
 	pub fn eq_implicit(&mut self, other: &mut Self, expr1: Option <&mut ExprKind>, expr2: Option <&mut ExprKind>) -> bool {
