@@ -50,11 +50,11 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 		let fields = cur.ty.get_fields_of_struct().expect("expected a structure");
 		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == *next).expect("no field with such a name found");
 		cur = Expr {
-			kind: ExprKind::AccessField {
+			kind: ExprKind::Variable(ExprKindVariableLocation::AccessField {
 				i: Box::new(cur),
 				def: fields,
-				field: idx,
-			},
+				field: idx
+			}),
 			ty: field.ty.clone(),
 		}
 	}

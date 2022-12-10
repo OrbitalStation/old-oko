@@ -16,6 +16,11 @@ pub enum ExprKindVariableLocation {
 		fun_stmt_index: usize,
 		fun_overload: usize,
 		line_def: usize
+	},
+	AccessField {
+		i: Box <Expr>,
+		def: &'static Vec <StructField>,
+		field: usize
 	}
 }
 
@@ -79,11 +84,6 @@ pub enum ExprKind {
 		cond: Box <Expr>,
 		yes: Vec <FunStmt>,
 		no: Vec <FunStmt>
-	},
-	AccessField {
-		i: Box <Expr>,
-		def: &'static Vec <StructField>,
-		field: usize
 	}
 }
 
@@ -129,7 +129,7 @@ fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValue
 	unsafe { LLVMConstStructInContext(llvm_context(), values.as_mut_ptr(), values.len() as _, 0) }
 }
 
-fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue: bool) -> LLVMValueRef {
+fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> LLVMValueRef {
 	match location {
 		ExprKindVariableLocation::FunArg {
 			fun_stmt_index,
@@ -165,6 +165,25 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 				panic!("expected an lvalue")
 			} else {
 				llvm_value
+			}
+		},
+		ExprKindVariableLocation::AccessField {
+			i,
+			field,
+			def
+		} => {
+			let ivalue = i.to_llvm_value(stmts, fun_name).0;
+			let field_val = unsafe { LLVMBuildStructGEP(llvm_builder(), ivalue, *field as _, b"\0".as_ptr() as _) };
+			if !def[*field].ty.is_copy() || is_lvalue {
+				// It does not matter whether `is_lvalue` is set or not -
+				// a non-copy type is passed by pointer anyway.
+
+				// And if `is_lvalue` is set and the type is a copy one,
+				// then we still do it by reference
+				field_val
+			} else {
+				// Load a non-copy type that is not needed to be lvalue
+				unsafe { LLVMBuildLoad(llvm_builder(), field_val, b"\0".as_ptr() as _) }
 			}
 		}
 	}
@@ -271,22 +290,6 @@ unsafe fn check_if_previous_basic_block_is_terminated_and_terminate_if_not(bb: L
 	}
 }
 
-fn build_access_field(i: &Expr, def: &Vec <StructField>, idx: usize, stmts: &[Stmt], fun_name: &str, is_lvalue: bool) -> LLVMValueRef {
-	let ivalue = i.to_llvm_value(stmts, fun_name).0;
-	let field = unsafe { LLVMBuildStructGEP(llvm_builder(), ivalue, idx as _, b"\0".as_ptr() as _) };
-	if !def[idx].ty.is_copy() || is_lvalue {
-		// It does not matter whether `is_lvalue` is set or not -
-		// a non-copy type is passed by pointer anyway.
-
-		// And if `is_lvalue` is set and the type is a copy one,
-		// then we still do it by reference
-		field
-	} else {
-		// Load a non-copy type that is not needed to be lvalue
-		unsafe { LLVMBuildLoad(llvm_builder(), field, b"\0".as_ptr() as _) }
-	}
-}
-
 #[derive(Debug, Clone)]
 pub struct Expr {
 	pub kind: ExprKind,
@@ -301,8 +304,7 @@ impl Expr {
 
 	fn _to_llvm(&self, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> (LLVMValueRef, /* terminated */ bool) {
 		(match &self.kind {
-			ExprKind::Variable(location) => build_variable(location, stmts, is_lvalue),
-			ExprKind::AccessField { i, def, field } => build_access_field(i, *def, *field, stmts, fun_name, is_lvalue),
+			ExprKind::Variable(location) => build_variable(location, stmts, is_lvalue, fun_name),
 
 			_ if is_lvalue => panic!("expected an lvalue"),
 
