@@ -63,13 +63,39 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 	cur
 }
 
-fn assignment(input: ParseFunBodyInput, lvalue: Expr, new: Expr) -> (FunStmt, Type) {
+fn assignment(input: ParseFunBodyInput, mut lvalue: Expr, mut new: Expr) -> (FunStmt, Type) {
 	// if !lvalue.ty.is_copy() {
 	//     // TODO! DROP lvalue and do not forget that drop may occur only on fully valid values
 	// }
 
 	new.mark_as_moved_and_panic_if_already(input);
+	assert!(new.ty.eq_implicit(&mut lvalue.ty, Some(&mut new.kind), Some(&mut lvalue.kind)), "cannot assign two different types");
 	(FunStmt::Assignment { lvalue, new }, Type::UNIT_TUPLE)
+}
+
+fn dereference(ptr: Expr) -> Expr {
+	let (ty, mutability) = match &ptr.ty.kind {
+		TypeKind::Reference { ty, mutable } => ((**ty).clone(), *mutable),
+		TypeKind::Pointer { ty, ptrs } => if ptrs.len == 1 {
+			((**ty).clone(), (ptrs.muts & 1) != 0)
+		} else {
+			(Type::from_kind(TypeKind::Pointer {
+				ty: ty.clone(),
+				ptrs: TypePointers {
+					len: ptrs.len - 1,
+					muts: ptrs.muts << 1
+				}
+			}), (ptrs.muts & 1) != 0)
+		},
+		_ => panic!("cannot dereference a type that is neither pointer nor reference")
+	};
+	Expr {
+		kind: ExprKind::Dereference {
+			ptr: Box::new(ptr),
+			may_be_mutable: mutability
+		},
+		ty,
+	}
 }
 
 peg::parser! { grammar okolang() for str {
@@ -376,6 +402,8 @@ peg::parser! { grammar okolang() for str {
 		--
 		x:(@) __expr1_bin_op(<"×">, input) y:@ { check2arithmetic(x, y, BinOpType::Mul) }
 		x:(@) __expr1_bin_op(<"÷">, input) y:@ { check2arithmetic(x, y, BinOpType::Div) }
+		--
+		"*" x:(@) { dereference(x) }
 		--
 		x:__expr1_fun_call(input) { x }
 		x:__expr1_extern_fun_call(input) { x }

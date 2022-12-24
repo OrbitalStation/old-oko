@@ -30,7 +30,9 @@ ty Wrapper = x: i32 + y: InnerWrapper
 
 unwrap x: Wrapper = x.y.z
 
-test x: Wrapper -> Wrapper
+test x: Wrapper, f: ^u8 -> Wrapper
 	$y := x
 	y.x = 4
+	*f = *f
+	*f = 8
 	return y

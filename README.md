@@ -1,7 +1,10 @@
 ## Comments
-`* Text`
-
-`^ the beginning of the line with possibly some tabs before`
+```
+* Text
+* ^ the beginning of the line with possibly some tabs before
+* Note that a space after `*` is required to differentiate between
+*   a comment and dereference
+```
 
 ## Types definition
 
@@ -113,6 +116,11 @@ a or b
 `structName.fieldName`
 `a.b.c`
 `wrapper.inner`
+
+## Dereferencing
+`*ptr`
+`*a.y.x`
+`*(expr)`
 
 ## Ifs
 ```

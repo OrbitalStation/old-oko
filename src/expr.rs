@@ -128,9 +128,10 @@ pub enum ExprKind {
 		yes: Vec <FunStmt>,
 		no: Vec <FunStmt>
 	},
-	// Dereference {
-	// 	ptr: Box <Expr>
-	// }
+	Dereference {
+		ptr: Box <Expr>,
+		may_be_mutable: bool
+	}
 }
 
 impl ExprKind {
@@ -338,9 +339,20 @@ unsafe fn check_if_previous_basic_block_is_terminated_and_terminate_if_not(bb: L
 	}
 }
 
-// fn build_dereference(ptr: &Expr) -> LLVMValueRef {
-//
-// }
+/*
+__buildDereference ptr: &Expr, stmts: &[Stmt], name: &str, isLvalue: bool -> LLVMValueRef
+	llvm := (ptr.toLLVMValue stmts name).0
+	if isLvalue do llvm else unsafe LLVMBuildLoad llvmBuilder llvm c""
+*/
+fn build_dereference(ptr: &Expr, mutability: bool, stmts: &[Stmt], name: &str, is_lvalue: bool) -> LLVMValueRef {
+	let llvm = ptr.to_llvm_value(stmts, name).0;
+	if is_lvalue {
+		assert!(mutability, "cannot mutate non-mutable dereference");
+		llvm
+	} else {
+		unsafe { LLVMBuildLoad(llvm_builder(), llvm, b"\0".as_ptr() as _) }
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct Expr {
@@ -415,7 +427,7 @@ impl Expr {
 			ExprKind::Tuple(elems) | ExprKind::FunCall { args: elems, ..} | ExprKind::ExternFunCall { args: elems, .. } => for elem in elems {
 				elem.mark_as_moved_and_panic_if_already(input)
 			},
-			//ExprKind::Dereference { ptr } => assert_eq!(ptr.ty.is_copy(), "cannot move out of a reference"),
+			ExprKind::Dereference { ptr, .. } => assert!(ptr.ty.is_copy(), "cannot move out of a reference"),
 			ExprKind::Literal(_) | ExprKind::BinOp { .. } | ExprKind::If { .. } => { /* ignore */ },
 		}
 	}
@@ -423,6 +435,7 @@ impl Expr {
 	fn _to_llvm(&self, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> (LLVMValueRef, /* terminated */ bool) {
 		(match &self.kind {
 			ExprKind::Variable { location } => build_variable(location, stmts, is_lvalue, fun_name),
+			ExprKind::Dereference { ptr, may_be_mutable } => build_dereference(ptr, *may_be_mutable, stmts, fun_name, is_lvalue),
 
 			_ if is_lvalue => panic!("expected an lvalue"),
 
