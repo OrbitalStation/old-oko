@@ -19,9 +19,6 @@ pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 
 fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 	let FunDef { overloads, name } = fundef;
-	if name == "test" {
-		println!("Hi!")
-	}
 	for FunDefOverloadablePart { body, llvm_fun, ret_ty, vals, .. } in overloads {
 		let body = match body {
 			FunBody::Baked(exprs) => exprs,

@@ -68,6 +68,7 @@ fn assignment(input: ParseFunBodyInput, mut lvalue: Expr, mut new: Expr) -> (Fun
 	//     // TODO! DROP lvalue and do not forget that drop may occur only on fully valid values
 	// }
 
+	assert!(lvalue.is_lvalue(input.stmts()), "cannot assign to a non-lvalue");
 	new.mark_as_moved_and_panic_if_already(input);
 	assert!(new.ty.eq_implicit(&mut lvalue.ty, Some(&mut new.kind), Some(&mut lvalue.kind)), "cannot assign two different types");
 	(FunStmt::Assignment { lvalue, new }, Type::UNIT_TUPLE)

@@ -366,6 +366,21 @@ impl Expr {
 		ty: Type::UNIT_TUPLE
 	};
 
+	pub fn is_lvalue(&self, stmts: &[Stmt]) -> bool {
+		match &self.kind {
+			ExprKind::Variable { location } => match location {
+				ExprKindVariableLocation::FunArg { .. } => false,
+				ExprKindVariableLocation::Val { fun_stmt_index, fun_overload, line_def} => match &stmts[*fun_stmt_index] {
+					Stmt::FunDef(fun) => fun.overloads[*fun_overload].vals.get(line_def).unwrap().mutable,
+					_ => unreachable!()
+				},
+				ExprKindVariableLocation::AccessField { i, .. } => i.is_lvalue(stmts)
+			},
+			ExprKind::Dereference { may_be_mutable, .. } => *may_be_mutable,
+			_ => false
+		}
+	}
+
 	/// Returns ordinary type and value for copy types,
 	/// removes pointers from non-copy
 	pub fn get_pure_llvm_type_and_value(&mut self, stmts: &[Stmt], name: &str) -> (LLVMTypeRef, LLVMValueRef) {
