@@ -6,32 +6,32 @@
 * Single line comment
 
 * Enum of values `None` and `Some` containing some value
-ty optional = None | Some T
+ty optional T = None | Some T
 -- OR --
-ty optional
+ty optional T
 	None
 	Some T
 
-isNone.& optional T = choose i
+isNone.& <T> optional T = choose i
 	None => true
 	Some ... => false
 
-isSome.& optional T = !i.isNone
+isSome.& <T> optional T = !i.isNone
 
-map.& optional T, mutator: λT -> U = choose i
+map.& <T U> optional T, mutator: λT -> U = choose i
 	None => None
 	Some value => Some mutator value
 
-ty result = Ok T | Err E
+ty result T E = Ok T | Err E
 
-or.& result T E, pred: λE -> T = choose x
+or.& <T E> result T E, pred: λE -> T = choose x
 	Ok value => value
 	Err error => pred error
 
 * Enum of two values `yes` and `no`
 ty bool = yes | no
 
-idea Iterator
+idea Iterator E
 	* Rust equivalent:
 	* fn next(&mut self) -> &E;
 	next.$ -> &E
@@ -43,14 +43,14 @@ idea Iterator
 * Each structural type automatically creates
 * 	a constructor, whose name is a decapitalized type name,
 *	i.e. `filter` in this case
-ty Filter
+ty Filter I P
 	iter: I
 	pred: P
 where
 	I: Iterator ...
 	P: λI.E -> bool
 
-Filter :: Iterator I.E
+Filter I P :: Iterator I.E
 	next.$ = loop choose next i.iter
 		Some e => if i.pred e => break Some e
 		None => break None
@@ -66,7 +66,7 @@ Filter :: Iterator I.E
 	isExhausted.& = i.iter.isExhausted
 
 * Ideas can also be shortened
-idea Add = add other: U -> R
+idea Add U R = add other: U -> R
 * This means that `U` may not be specified and
 *	would be replaced with `Y`, which is an alias
 *	to the very type that implements the idea
@@ -75,7 +75,7 @@ where U defaultsto Y
 idea Default = const DEFAULT: Y
 
 * Rust analogue: fn sum(self) -> I::E
-sum.! I -> I.E
+sum.! <I> I -> I.E
 	$s := I.E.DEFAULT
 	for e in i do s += e
 	return s

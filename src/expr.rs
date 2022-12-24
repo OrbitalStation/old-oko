@@ -127,7 +127,10 @@ pub enum ExprKind {
 		cond: Box <Expr>,
 		yes: Vec <FunStmt>,
 		no: Vec <FunStmt>
-	}
+	},
+	// Dereference {
+	// 	ptr: Box <Expr>
+	// }
 }
 
 impl ExprKind {
@@ -202,7 +205,9 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			let val = overload.vals.get(line_def).unwrap();
 			let llvm_value = val.llvm_value.unwrap();
 
-			if val.mutable && !is_lvalue {
+			if !val.init.ty.is_copy() {
+				llvm_value
+			} else if val.mutable && !is_lvalue {
 				unsafe { LLVMBuildLoad(llvm_builder(), llvm_value, b"\0".as_ptr() as _) }
 			} else if !val.mutable && is_lvalue {
 				panic!("expected an lvalue")
@@ -333,6 +338,10 @@ unsafe fn check_if_previous_basic_block_is_terminated_and_terminate_if_not(bb: L
 	}
 }
 
+// fn build_dereference(ptr: &Expr) -> LLVMValueRef {
+//
+// }
+
 #[derive(Debug, Clone)]
 pub struct Expr {
 	pub kind: ExprKind,
@@ -344,6 +353,19 @@ impl Expr {
 		kind: ExprKind::UNIT_TUPLE,
 		ty: Type::UNIT_TUPLE
 	};
+
+	/// Returns ordinary type and value for copy types,
+	/// removes pointers from non-copy
+	pub fn get_pure_llvm_type_and_value(&mut self, stmts: &[Stmt], name: &str) -> (LLVMTypeRef, LLVMValueRef) {
+		let mut val = self.to_llvm_value(stmts, name).0;
+		let ty = if !self.ty.is_copy() {
+			val = unsafe { LLVMBuildLoad(llvm_builder(), val, b"\0".as_ptr() as _) };
+			self.ty.llvm_type()
+		} else {
+			self.ty.llvm_type()
+		};
+		(ty, val)
+	}
 
 	/// Returns variable state on normal variables
 	/// and returns the state of the mother struct
@@ -377,20 +399,6 @@ impl Expr {
 		}
 	}
 
-	/*
-	* Rough Oko equivalent
-
-	__markState state: $VariableState
-		assert state.isFullyValid, "variable is already partially/fully moved"
-		*state = VariableState.Scalar VariableStateScalar.Moved
-
-	* Values of only non-copy types can be moved
-	markAsMovedAndPanicIfAlready.$ Expr, input: ParseFunBodyInput = if i.ty.isCopy do return else choose $i.kind
-		Variable ... => __markState i.getVariableState input
-		Tuple elems | FunCall elems@(args) | ExternFunCall elems@(args) => for elem in elems do elem.markAsMovedAndPanicIfAlready input
-		Literal ... | BinOp ... | If ... => pass
-
-	*/
 	pub fn mark_as_moved_and_panic_if_already(&self, input: ParseFunBodyInput) {
 		if self.ty.is_copy() {
 			/* Values of only non-copy types can be moved */
@@ -407,6 +415,7 @@ impl Expr {
 			ExprKind::Tuple(elems) | ExprKind::FunCall { args: elems, ..} | ExprKind::ExternFunCall { args: elems, .. } => for elem in elems {
 				elem.mark_as_moved_and_panic_if_already(input)
 			},
+			//ExprKind::Dereference { ptr } => assert_eq!(ptr.ty.is_copy(), "cannot move out of a reference"),
 			ExprKind::Literal(_) | ExprKind::BinOp { .. } | ExprKind::If { .. } => { /* ignore */ },
 		}
 	}

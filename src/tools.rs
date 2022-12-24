@@ -74,8 +74,9 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 			FunStmt::ValDef { line } => {
 				let v = vals.get_mut(line).unwrap();
 				if v.mutable {
-					let llvm_value = unsafe { LLVMBuildAlloca(llvm_builder(), v.init.ty.llvm_type(), b"\0".as_ptr() as _) };
-					unsafe { LLVMBuildStore(llvm_builder(), v.init.to_llvm_value(stmts, name).0, llvm_value) };
+					let (ty, val) = v.init.get_pure_llvm_type_and_value(stmts, name);
+					let llvm_value = unsafe { LLVMBuildAlloca(llvm_builder(), ty, b"\0".as_ptr() as _) };
+					unsafe { LLVMBuildStore(llvm_builder(), val, llvm_value) };
 					v.llvm_value = Some(llvm_value)
 				} else {
 					v.llvm_value = Some(v.init.to_llvm_value(stmts, name).0)
