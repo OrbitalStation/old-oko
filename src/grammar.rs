@@ -142,7 +142,8 @@ peg::parser! { grammar okolang() for str {
 	{
 		let ty = Type::meet_new_raw_scalar(name.clone(), Some(TypeDef {
 			name,
-			kind
+			kind,
+			methods: HashMap::new()
 		}));
 
 		TypeDefIndex {
@@ -545,7 +546,7 @@ peg::parser! { grammar okolang() for str {
 			Some((is_simple, code)) => {
 				Stmt::FunDef(FunDef {
 					name,
-					overloads: vec![FunDefOverloadablePart {
+					overloads: vec![FunSignature {
 						args,
 						body: FunBody::Raw { code },
 						ret_ty: match ret_ty {

@@ -26,13 +26,8 @@ add x y: u8 = x + y
 
 ty InnerWrapper = x y z w: i8
 
-ty Wrapper = x: i32 + y: InnerWrapper
+ty Wrapper
+	x: i32
+	y: InnerWrapper
 
 unwrap x: Wrapper = x.y.z
-
-test x: Wrapper, f: ^u8 -> Wrapper
-	$y := x
-	y.x = 4
-	*f = *f
-	*f = 8
-	return y

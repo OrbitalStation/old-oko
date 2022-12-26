@@ -23,3 +23,22 @@
    It shall also extend further than just enums. You get the point.
 * Add `mutable` attribute for fields of struct that will allow modifying
     them through a shared reference; should be highly unsafe
+* Generics in functions and structs are found in this way:
+    if a type is a single uppercase letter then it is
+    not treated like an undefined type but as a generic
+* No surprise, but from the following item of this list consequences
+    that a user-defined type is not allowed to consist of
+    a single uppercase letter
+* Forbid function overloading and only allow default values for args.
+    Example:
+    ```
+    * Can omit type here, it is inferred automatically
+    sayHello receiver="Joshuae"
+        println "Hallo, $receiver!"
+  
+    * Hallo, Joshuae!
+    sayHello
+    
+    * Hallo, Qyrpyt!
+    sayHello receiver="Qyrpyt"
+    ```

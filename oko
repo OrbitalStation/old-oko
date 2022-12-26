@@ -6,87 +6,102 @@
 * Single line comment
 
 * Enum of values `None` and `Some` containing some value
-ty optional T = None | Some T
--- OR --
-ty optional T
+* Methods `isNone` and `isSome` are defined automatically
+ty optional
 	None
 	Some T
 
-isNone.& <T> optional T = choose i
-	None => true
-	Some ... => false
+	* Takes `i` by ref
+	map.& mutator: λT -> U = choose i
+		None => None
+		Some value => Some mutator value
 
-isSome.& <T> optional T = !i.isNone
-
-map.& <T U> optional T, mutator: λT -> U = choose i
-	None => None
-	Some value => Some mutator value
-
-ty result T E = Ok T | Err E
-
-or.& <T E> result T E, pred: λE -> T = choose x
-	Ok value => value
-	Err error => pred error
+ty result = Ok T | Err E
+	or.& pred: λE -> T = choose x
+		Ok value => value
+		Err error => pred error
 
 * Enum of two values `yes` and `no`
 ty bool = yes | no
 
-idea Iterator E
+idea Iterator
+	* An associated type
+	ty Item
+
 	* Rust equivalent:
-	* fn next(&mut self) -> &E;
-	next.$ -> &E
+	* fn next(&mut self) -> &Self::Item;
+	next.$ -> optional Item
 
 	* Rust equivalent:
 	* fn isExhausted(&self) -> bool;
 	isExhausted.& -> bool
 
 * Each structural type automatically creates
-* 	a constructor, whose name is a decapitalized type name,
-*	i.e. `filter` in this case
-ty Filter I P
+* 	a default method fabrik, which can be accessed via
+*	`Type.new`, i.e. `Filter.new` in this case
+* By-hand definition of this method would be(in this case):
+*	impl Filter I P
+*       * `.*` at the end means this is a static method
+*		new.* iter: I, pred: P -> Filter = <...>
+* Also, those `I` and `P` are generics.
+* If a single uppercase letter is met where a type was expected,
+*   it is automatically added to generics list(if it's not here already, of course)
+* Generics might also be specified before the type definition, e.g. `template I P\nty Filter` in this case
+ty Filter
 	iter: I
 	pred: P
-where
-	I: Iterator ...
-	P: λI.E -> bool
 
-Filter I P :: Iterator I.E
-	next.$ = loop choose next i.iter
-		Some e => if i.pred e => break Some e
-		None => break None
-		-- OR --
-		loop
-			* `?` operator is placed before an expression
-			e := ?next i.iter
-			if i.pred e => break Some e
-		-- OR --
-		* `@` operator binds a name to an expression
-		loop if i.pred (?next i.iter)@e => break Some e
+* `<type> :: <idea>` means implementation of an idea to that given type.
+* Rust: `impl <I: ..., P: ...> Iterator for Filter <I, P>`
+* It's also possible to do just `<type> ::` and that would add items to the type itself
+* It is necessary to indicate I and P here
+Filter I P :: Iterator
+	ty Item = I.Item
+
+	* Takes `i` by a mutable ref
+	* `?` operator is placed before an expression
+	* `@` operator binds a name to an expression
+	* `.call` is needed here because fields, unlike methods,
+	*   are not eager to be called and aren't instantly called,
+	*   and this `.call` specifies we want it
+	next.$ -> optional Item = loop if i.pred.call (?next i.iter)@elem => break Some elem
 	
 	isExhausted.& = i.iter.isExhausted
+where
+	I: Iterator
+	* `λI.Item -> bool` is a special case in this case,
+	*   it's not a type of a function, but a description of a signature for a functor
+	P: λI.Item -> bool
 
-* Ideas can also be shortened
-idea Add U R = add other: U -> R
+idea Add U
+	ty Return
+	add other: U -> Return
 * This means that `U` may not be specified and
 *	would be replaced with `Y`, which is an alias
 *	to the very type that implements the idea
 where U defaultsto Y
 
+* Ideas can also be shortened
+* Is implemented automatically on every type
 idea Default = const DEFAULT: Y
 
-* Rust analogue: fn sum(self) -> I::E
-sum.! <I> I -> I.E
-	$s := I.E.DEFAULT
-	for e in i do s += e
-	return s
+idea Sum = sum.! Y -> Y.Item
+where Y: Iterator
+
+Sum :: I
+	* Takes `i` by-value(Rust's `self`)
+	sum.! I -> I.Item
+		$s := I.Item.DEFAULT
+		for e in i do s += e
+		return s
 where
-	I: Iterator ...
-	I.E: Default + Add
+	I: Iterator
+	I.Item: Default + Add
 
 * `value |> func args` is equivalent to
 * `func value args`
-* This operator exists to make the code more clear
-eulerTask1 = filter 0..1000 λx: x % 3 == 0 or x % 5 == 0 |> sum |> println
+* This operator exists to make the code clearer and cleaner
+eulerTask1 = Filter.new 0..1000 λx: x % 3 == 0 or x % 5 == 0 |> sum |> println
 
 * Hello, world!
 println "Hello, world!"
@@ -126,12 +141,11 @@ loop
 * Rectangle
 
 ty Rectangle = width height: u32
+	square.* size: u32 = Y.new size size
 
-square size: u32 = rectangle size size
+	area.& = i.width * i.height
 
-area.& Rectangle = i.width * i.height
-
-rect1 := rectangle 30 50
+rect1 := Rectangle.new 30 50
 
 println "rect1 is $rect1"
 
@@ -139,14 +153,14 @@ println "rect1 is $rect1"
 *	a value of `...` inside it
 println "Area of the rect1 is {area rect1}"
 
-* Message Enum
+ty Point = x y: i32
+
 ty Message
 	Quit
-	Move x y: i32
-	Write string
-	ChangeColor color
+	Move Point
+	Write Str
+	ChangeColor Color
 
-* Coin
 ty Coin
 	Penny
 	Nickel
@@ -159,3 +173,27 @@ valueInCents coin: Coin = choose coin
 	Nickel => 5
 	Dime => 10
 	Quarter => 25
+
+
+* Double each value
+([1 2 3 4].iter.map λx: x × 2).collect::Vec i32
+
+* Sum all values
+[1 2 3 4].iter.sum
+
+idea Iterator
+	ty Item
+	next.$ -> optional Item
+
+ty Map
+	iter: I
+	mutator: M
+
+* `template` not necessary here since all of these are added to generics list automatically
+template I M U
+Map I M :: Iterator
+	ty Item = U
+	next.$ -> optional Item = i.iter.next.map i.mutator
+where
+	I: Iterator
+	M: λI.Item -> U

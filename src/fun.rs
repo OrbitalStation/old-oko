@@ -6,11 +6,11 @@ use crate::*;
 #[derive(Debug)]
 pub struct FunDef {
 	pub name: String,
-	pub overloads: Vec <FunDefOverloadablePart>
+	pub overloads: Vec <FunSignature>
 }
 
 #[derive(Debug, Clone)]
-pub struct FunDefOverloadablePart {
+pub struct FunSignature {
 	pub args: Vec <FunArg>,
 	pub body: FunBody,
 	pub ret_ty: FunRetType,
@@ -19,7 +19,7 @@ pub struct FunDefOverloadablePart {
 	pub vals: HashMap <usize, VariableInfo>
 }
 
-impl FunDefOverloadablePart {
+impl FunSignature {
 	pub fn is_ret_by_value(&self) -> bool {
 		self.ret_ty.as_determined().is_copy()
 	}

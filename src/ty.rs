@@ -1,18 +1,32 @@
 use core::fmt::{Debug, Formatter, Result, Write};
+use std::collections::HashMap;
 use std::ffi::CString;
 use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(u8)]
+pub enum AssociatedMethodKind {
+	ByRef
+}
+
+#[derive(Debug, Clone)]
+pub struct AssociatedMethod {
+	pub kind: AssociatedMethodKind,
+	pub signature: FunSignature
+}
+
+#[derive(Debug, Clone)]
 pub struct TypeDef {
 	pub name: String,
-	pub kind: TypeDefKind
+	pub kind: TypeDefKind,
+	pub methods: HashMap <String, AssociatedMethod>
 }
 
 #[derive(Copy, Clone)]
 pub struct TypeDefIndex {
-	/// Index of a type definition in a type list
+	/// Index of a type definition in the type list
 	pub index: usize
 }
 
@@ -25,7 +39,7 @@ impl Debug for TypeDefIndex {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeDefKind {
 	Enum {
 		variants: Vec <EnumVariant>
@@ -37,13 +51,13 @@ pub enum TypeDefKind {
 	Opaque
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EnumVariant {
 	pub name: String,
 	pub data: Vec <Type>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructField {
 	pub name: String,
 	pub ty: Type
