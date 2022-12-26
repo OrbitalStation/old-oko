@@ -25,7 +25,7 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 					// This will insert function calls and whatever stuff
 					expr.to_llvm_value(stmts, name);
 					unsafe { LLVMBuildRetVoid(llvm_builder()); }
-				} else if expr.ty.is_copy() {
+				} else if expr.ty.is_simplistic() {
 					unsafe { LLVMBuildRet(llvm_builder(), expr.to_llvm_value(stmts, name).0); }
 				} else {
 					unsafe {
@@ -74,7 +74,7 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 			FunStmt::ValDef { line } => {
 				let v = vals.get_mut(line).unwrap();
 				if v.mutable {
-					let (ty, val) = v.init.get_pure_llvm_type_and_value(stmts, name);
+					let (ty, val) = (v.init.ty.llvm_type(), v.init.to_llvm_value(stmts, name).0);
 					let llvm_value = unsafe { LLVMBuildAlloca(llvm_builder(), ty, b"\0".as_ptr() as _) };
 					unsafe { LLVMBuildStore(llvm_builder(), val, llvm_value) };
 					v.llvm_value = Some(llvm_value)

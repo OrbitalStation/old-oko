@@ -137,8 +137,27 @@ peg::parser! { grammar okolang() for str {
 		= ptrs:$(['*' | '^']+) ty:__non_ptr_ty() { Type::meet_new_pointer(ty, ptrs) }
 		/ ty:__non_ptr_ty() { ty }
 
+	rule typedef_assoc_items_raw() -> String
+		= line:complex_body_line_with_nl()* { line.join("\n") }
+
+	rule typedef_assoc_item(mother_ty: &Type) -> AssociatedMethod
+		= fun:fun_or_extern_fun_definition(true)
+	{
+		AssociatedMethod {
+			def: match fun.0 {
+				Stmt::FunDef(def) => def,
+				_ => unreachable!()
+			},
+			kind: fun.1.unwrap(),
+			state_of_i: VariableState::valid(mother_ty)
+		}
+	}
+
+	pub(in crate) rule typedef_assoc_items(mother_ty: &Type) -> Vec <AssociatedMethod>
+		= items:typedef_assoc_item(mother_ty) ** nl() nl()? { items }
+
 	rule type_definition() -> TypeDefIndex
-		= "ty" __ name:ident() kind:type_definition_body()
+		= "ty" __ name:ident() kind:type_definition_body() assoc_items:typedef_assoc_items_raw()
 	{
 		let ty = Type::meet_new_raw_scalar(name.clone(), Some(TypeDef {
 			name,
@@ -146,8 +165,17 @@ peg::parser! { grammar okolang() for str {
 			methods: vec![]
 		}));
 
+		let index = ty.as_scalar_index();
+
+		let items = typedef_assoc_items(&(assoc_items + "\n"), &ty).unwrap();
+
+		match &mut Type::raw()[index] {
+			RawType::Backed(typedef) => typedef.methods = items,
+			_ => unreachable!()
+		}
+
 		TypeDefIndex {
-			index: ty.as_scalar_index()
+			index
 		}
 	}
 
@@ -212,7 +240,7 @@ peg::parser! { grammar okolang() for str {
 			Expr {
 				kind: ExprKind::Variable {
 					location: ExprKindVariableLocation::FunArg {
-						fun: FunLocation::Global { stmt_index: input.cur_stmt },
+						fun: input.fun_loc.clone(),
 						var_index
 					}
 				},
@@ -222,11 +250,28 @@ peg::parser! { grammar okolang() for str {
 			Expr {
 				kind: ExprKind::Variable {
 					location: ExprKindVariableLocation::Val {
-						fun: FunLocation::Global { stmt_index: input.cur_stmt },
+						fun: input.fun_loc.clone(),
 						line_def: *line
 					}
 				},
 				ty: info.init.ty.clone()
+			}
+		} else if name == "i" {
+			if let FunLocation::Method(method) = &input.fun_loc {
+				Expr {
+					kind: ExprKind::Variable {
+						location: ExprKindVariableLocation::IInMethod {
+							method: *method
+						}
+					},
+					ty: FunLocation::Method(*method).method().kind.modify_type(Type {
+						kind: TypeKind::Scalar {
+							index: method.ty_index.index
+						}
+					})
+				}
+			} else {
+				return Err("expression")
 			}
 		} else {
 			return Err("expression")
@@ -511,25 +556,43 @@ peg::parser! { grammar okolang() for str {
 	rule __fun_ret_ty() -> Type
 		= _ "->" _ ty:ty() { ty }
 
-	rule __fun_or_extern_fun_definition_cont() -> Option <(bool, String)>
+	rule __fun_or_extern_fun_definition_cont(a: bool) -> Option <(bool, String)>
 		= _ "=" _ "extern" nl() { None }
 		/ body:fundef_body() { Some(body) }
 
-	rule fun_or_extern_fun_definition() -> Stmt
-		= name:ident() _ args:fundef_args() ret_ty:__fun_ret_ty()? body:__fun_or_extern_fun_definition_cont()
+	rule __fun_method_type() -> AssociatedMethodKind
+		= _ "." x:['&']
+	{
+		match x {
+			'&' => AssociatedMethodKind::ByRef,
+			_ => unreachable!()
+		}
+	}
+
+	rule fun_or_extern_fun_definition(is_a_method: bool) -> (Stmt, Option <AssociatedMethodKind>)
+		= name:ident() method_type:__fun_method_type()? _ args:fundef_args() ret_ty:__fun_ret_ty()? body:__fun_or_extern_fun_definition_cont(is_a_method)
 	{
 		match body {
-			None => Stmt::ExternFun(ExternFun {
-				name,
-				args: args.into_iter().map(|arg| arg.ty).collect(),
-				ret_ty: match ret_ty {
-					None => Type::UNIT_TUPLE,
-					Some(ty) => ty
-				},
-				llvm_fun: None
-			}),
+			None => {
+				assert!(method_type.is_none() && !is_a_method, "cannot have an extern fun `{name}` as an associated method");
+				(Stmt::ExternFun(ExternFun {
+					name,
+					args: args.into_iter().map(|arg| arg.ty).collect(),
+					ret_ty: match ret_ty {
+						None => Type::UNIT_TUPLE,
+						Some(ty) => ty
+					},
+					llvm_fun: None
+				}), None)
+			},
 			Some((is_simple, code)) => {
-				Stmt::FunDef(FunDef {
+				let assoc_kind = if is_a_method {
+					Some(method_type.expect("method kind not specified"))
+				} else {
+					assert!(method_type.is_none(), "an associated method `{name}` is defined in the global space");
+					None
+				};
+				(Stmt::FunDef(FunDef {
 					name,
 					args,
 					body: FunBody::Raw { code },
@@ -541,14 +604,14 @@ peg::parser! { grammar okolang() for str {
 					is_simple,
 					llvm_fun: None,
 					vals: HashMap::new()
-				})
+				}), assoc_kind)
 			}
 		}
 	}
 
 	rule stmt() -> Stmt
 		= x:type_definition() { Stmt::TypeDef(x) }
-		/ x:fun_or_extern_fun_definition() { x }
+		/ x:fun_or_extern_fun_definition(false) { x.0 }
 
 	rule __global_whitespace() = quiet!{[' ' | '\n' | '\t']*}
 

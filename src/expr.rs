@@ -5,31 +5,69 @@ use core::fmt::{Debug, Formatter, Result};
 use std::collections::HashMap;
 use llvm::LLVMIntPredicate;
 
+#[derive(Debug, Copy, Clone)]
+pub struct FunMethodLocation {
+	pub ty_index: TypeDefIndex,
+	pub method_index: usize
+}
+
 #[derive(Debug, Clone)]
 pub enum FunLocation {
 	Global {
 		stmt_index: usize
 	},
-	Method {
-		ty_index: TypeDefIndex,
-		method_index: usize
-	}
+	Method(FunMethodLocation)
 }
 
 impl FunLocation {
+	pub fn mother_typedef <'a> (&self) -> &'a TypeDef {
+		match self {
+			Self::Method(loc) => match Type::type_list() {
+				TypeList::Baked(baked) => match &baked[loc.ty_index.index].kind {
+					BakedTypeKind::Ordinary(def) => def,
+					_ => unreachable!()
+				},
+				_ => unreachable!()
+			},
+			_ => unimplemented!()
+		}
+	}
+
+	pub fn mother_typedef_mut <'a> (&self) -> &'a mut TypeDef {
+		match self {
+			Self::Method(loc) => match Type::type_list() {
+				TypeList::Baked(baked) => match &mut baked[loc.ty_index.index].kind {
+					BakedTypeKind::Ordinary(def) => def,
+					_ => unreachable!()
+				},
+				_ => unreachable!()
+			},
+			_ => unimplemented!()
+		}
+	}
+
+	pub fn method <'a> (&self) -> &'a AssociatedMethod {
+		match self {
+			Self::Method(loc) => &self.mother_typedef().methods[loc.method_index],
+			_ => unimplemented!()
+		}
+	}
+
+	pub fn method_mut <'a> (&self) -> &'a mut AssociatedMethod {
+		match self {
+			Self::Method(loc) => &mut self.mother_typedef_mut().methods[loc.method_index],
+			_ => unimplemented!()
+		}
+	}
+
+
 	pub fn fun <'a> (&self, stmts: &'a [Stmt]) -> &'a FunDef {
 		match self {
 			Self::Global { stmt_index, .. } => match &stmts[*stmt_index] {
 				Stmt::FunDef(def) => def,
 				_ => unreachable!()
 			},
-			Self::Method { ty_index, method_index } => match Type::type_list() {
-				TypeList::Baked(baked) => match &baked[ty_index.index].kind {
-					BakedTypeKind::Ordinary(def) => &def.methods[*method_index].def,
-					_ => unreachable!()
-				},
-				_ => unreachable!()
-			}
+			Self::Method(_) => &self.method().def
 		}
 	}
 
@@ -39,13 +77,7 @@ impl FunLocation {
 				Stmt::FunDef(def) => def,
 				_ => unreachable!()
 			},
-			Self::Method { ty_index, method_index } => match Type::type_list() {
-				TypeList::Baked(baked) => match &mut baked[ty_index.index].kind {
-					BakedTypeKind::Ordinary(def) => &mut def.methods[*method_index].def,
-					_ => unreachable!()
-				},
-				_ => unreachable!()
-			}
+			Self::Method(_) => &mut self.method_mut().def
 		}
 	}
 }
@@ -64,6 +96,9 @@ pub enum ExprKindVariableLocation {
 		i: Box <Expr>,
 		def: &'static Vec <StructField>,
 		field: usize
+	},
+	IInMethod {
+		method: FunMethodLocation
 	}
 }
 
@@ -76,15 +111,15 @@ pub enum VariableState {
 impl VariableState {
 	pub fn valid(ty: &Type) -> Self {
 		if let Some(fields) = ty.get_fields_of_struct() {
-			Self::new_struct(fields.len())
+			Self::new_struct(fields)
 		} else {
 			VariableState::Scalar(VariableStateScalar::Valid)
 		}
 	}
 
-	pub fn new_struct(fields: usize) -> Self {
+	pub fn new_struct(fields: &Vec <StructField>) -> Self {
 		VariableState::Struct(VariableStateStruct {
-			fields_states: vec![VariableState::Scalar(VariableStateScalar::Valid); fields]
+			fields_states: fields.iter().map(|f| VariableState::valid(&f.ty)).collect()
 		})
 	}
 
@@ -238,7 +273,7 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			let val = fun.vals.get(line_def).unwrap();
 			let llvm_value = val.llvm_value.unwrap();
 
-			if !val.init.ty.is_copy() {
+			if !val.init.ty.is_simplistic() {
 				llvm_value
 			} else if val.mutable && !is_lvalue {
 				unsafe { LLVMBuildLoad(llvm_builder(), llvm_value, b"\0".as_ptr() as _) }
@@ -254,18 +289,23 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			def
 		} => {
 			let ivalue = i.to_llvm_value(stmts, fun_name).0;
+
 			let field_val = unsafe { LLVMBuildStructGEP(llvm_builder(), ivalue, *field as _, b"\0".as_ptr() as _) };
-			if !def[*field].ty.is_copy() || is_lvalue {
+			if !def[*field].ty.is_simplistic() || is_lvalue {
 				// It does not matter whether `is_lvalue` is set or not -
-				// a non-copy type is passed by pointer anyway.
+				// a non-simplistic type is passed by pointer anyway.
 
 				// And if `is_lvalue` is set and the type is a copy one,
 				// then we still do it by reference
 				field_val
 			} else {
-				// Load a non-copy type that is not needed to be lvalue
+				// Load a non-simplistic type that is not needed to be lvalue
 				unsafe { LLVMBuildLoad(llvm_builder(), field_val, b"\0".as_ptr() as _) }
 			}
+		},
+		ExprKindVariableLocation::IInMethod { method } => {
+			let fun: &FunDef = FunLocation::Method(*method).fun(stmts);
+			unsafe { LLVMGetParam(fun.llvm_fun.unwrap(), 0) }
 		}
 	}
 }
@@ -367,18 +407,20 @@ unsafe fn check_if_previous_basic_block_is_terminated_and_terminate_if_not(bb: L
 	}
 }
 
-/*
-__buildDereference ptr: &Expr, stmts: &[Stmt], name: &str, isLvalue: bool -> LLVMValueRef
-	llvm := (ptr.toLLVMValue stmts name).0
-	if isLvalue do llvm else unsafe LLVMBuildLoad llvmBuilder llvm c""
-*/
 fn build_dereference(ptr: &Expr, mutability: bool, stmts: &[Stmt], name: &str, is_lvalue: bool) -> LLVMValueRef {
 	let llvm = ptr.to_llvm_value(stmts, name).0;
 	if is_lvalue {
 		assert!(mutability, "cannot mutate non-mutable dereference");
 		llvm
+	} else if let TypeKind::Pointer { ty, ..} | TypeKind::Reference { ty, ..} = &ptr.ty.kind {
+		if ty.is_simplistic() {
+			// Simplistic types are expected to be directly utilized
+			unsafe { LLVMBuildLoad(llvm_builder(), llvm, b"\0".as_ptr() as _) }
+		} else {
+			llvm
+		}
 	} else {
-		unsafe { LLVMBuildLoad(llvm_builder(), llvm, b"\0".as_ptr() as _) }
+		panic!("dereferencing of non-ptrs/refs is not currently allowed so that is a bug")
 	}
 }
 
@@ -400,37 +442,34 @@ impl Expr {
 				ExprKindVariableLocation::FunArg { .. } => false,
 				ExprKindVariableLocation::Val { fun, line_def}
 					=> fun.fun(stmts).vals.get(line_def).unwrap().mutable,
-				ExprKindVariableLocation::AccessField { i, .. } => i.is_lvalue(stmts)
+				ExprKindVariableLocation::AccessField { i, .. } => i.is_lvalue(stmts),
+				ExprKindVariableLocation::IInMethod { .. }
+					// TODO: Rework once mutable refs are allowed
+					=> false//FunLocation::Method(*method).method().kind == AssociatedMethodKind::ByMutRef
 			},
 			ExprKind::Dereference { may_be_mutable, .. } => *may_be_mutable,
 			_ => false
 		}
 	}
 
-	/// Returns ordinary type and value for copy types,
-	/// removes pointers from non-copy
-	pub fn get_pure_llvm_type_and_value(&mut self, stmts: &[Stmt], name: &str) -> (LLVMTypeRef, LLVMValueRef) {
-		let mut val = self.to_llvm_value(stmts, name).0;
-		let ty = if !self.ty.is_copy() {
-			val = unsafe { LLVMBuildLoad(llvm_builder(), val, b"\0".as_ptr() as _) };
-			self.ty.llvm_type()
-		} else {
-			self.ty.llvm_type()
-		};
-		(ty, val)
-	}
+	// pub fn get_pure_llvm_type_and_value(&mut self, stmts: &[Stmt], name: &str) -> (LLVMTypeRef, LLVMValueRef) {
+	// 	let mut val = self.to_llvm_value(stmts, name).0;
+	// 	let ty = if !self.ty.is_copy() {
+	// 		val = unsafe { LLVMBuildLoad(llvm_builder(), val, b"\0".as_ptr() as _) };
+	// 		self.ty.llvm_type()
+	// 	} else {
+	// 		self.ty.llvm_type()
+	// 	};
+	// 	(ty, val)
+	// }
 
-	/// Returns variable state on normal variables
-	/// and returns the state of the mother struct
 	pub fn get_variable_state <'a> (&self, input: ParseFunBodyInput <'a>) -> &'a mut VariableState {
 		match &self.kind {
 			ExprKind::Variable { location } => match location {
-				ExprKindVariableLocation::FunArg { fun, var_index } => {
-					&mut fun.fun_mut(input.stmts_mut()).args[*var_index].state
-				},
-				ExprKindVariableLocation::Val { fun, line_def } => {
-					&mut fun.fun_mut(input.stmts_mut()).vals.get_mut(line_def).unwrap().state
-				},
+				ExprKindVariableLocation::FunArg { fun, var_index }
+					=> &mut fun.fun_mut(input.stmts_mut()).args[*var_index].state,
+				ExprKindVariableLocation::Val { fun, line_def }
+					=> &mut fun.fun_mut(input.stmts_mut()).vals.get_mut(line_def).unwrap().state,
 				ExprKindVariableLocation::AccessField { i, field, def } => {
 					let state = i.get_variable_state(input);
 					match state {
@@ -439,14 +478,16 @@ impl Expr {
 						},
 						VariableState::Scalar(x) => {
 							assert_ne!(*x, VariableStateScalar::Moved, "variable already moved");
-							*state = VariableState::new_struct(def.len());
+							*state = VariableState::new_struct(def);
 							match state {
 								VariableState::Struct(x) => &mut x.fields_states[*field],
 								_ => unreachable!()
 							}
 						}
 					}
-				}
+				},
+				ExprKindVariableLocation::IInMethod { method }
+					=> &mut FunLocation::Method(*method).method_mut().state_of_i
 			},
 			_ => unimplemented!()
 		}

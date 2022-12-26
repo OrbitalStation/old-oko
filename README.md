@@ -48,6 +48,13 @@ ty Filter
 
 `ty Name = opaque`
 
+## Types' methods
+
+```
+ty Wrapper = x: i32
+    unwrap.& = i.x
+```
+
 ## Function definition
 
 ### Short form

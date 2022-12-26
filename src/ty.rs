@@ -10,10 +10,32 @@ pub enum AssociatedMethodKind {
 	ByRef
 }
 
+impl AssociatedMethodKind {
+	pub fn modify_llvm_type(self, ty: LLVMTypeRef) -> LLVMTypeRef {
+		unsafe {
+			match self {
+				Self::ByRef => LLVMPointerType(ty, 0)
+			}
+		}
+	}
+
+	pub fn modify_type(self, ty: Type) -> Type {
+		match self {
+			Self::ByRef => Type {
+				kind: TypeKind::Reference {
+					ty: Box::new(ty),
+					mutable: false
+				}
+			}
+		}
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct AssociatedMethod {
 	pub def: FunDef,
 	pub kind: AssociatedMethodKind,
+	pub state_of_i: VariableState
 }
 
 #[derive(Debug, Clone)]
@@ -115,8 +137,7 @@ impl TypePointers {
 
 #[derive(Eq, Clone)]
 pub struct Type {
-	pub kind: TypeKind,
-	llvm_type: Option <LLVMTypeRef>
+	pub kind: TypeKind
 }
 
 impl PartialEq for Type {
@@ -190,13 +211,9 @@ impl Debug for Type {
 impl Type {
 	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
 
+	/// Will make difference from `is_simplistic` when copy structs would appear
 	pub fn is_copy(&self) -> bool {
-		match &self.kind {
-			TypeKind::Integer | TypeKind::Pointer { .. } | TypeKind::Reference { .. } => true,
-			TypeKind::Scalar { index} => matches!(Self::baked()[*index].kind, BakedTypeKind::Builtin(_)),
-			TypeKind::Tuple { types } => types.is_empty(),
-			TypeKind::Array { size, .. } => *size == 0
-		}
+		self.is_simplistic()
 	}
 
 	pub fn get_builtin(name: &str) -> Self {
@@ -228,6 +245,16 @@ impl Type {
 	#[inline]
 	pub fn is_struct(&self) -> bool {
 		self.get_fields_of_struct().is_some()
+	}
+
+	/// A simplistic type is a type that can be used directly in LLVM-IR
+	pub fn is_simplistic(&self) -> bool {
+		match &self.kind {
+			TypeKind::Scalar { index } => matches!(Self::baked()[*index].kind, BakedTypeKind::Builtin(_)),
+			TypeKind::Pointer { .. } | TypeKind::Reference { .. } | TypeKind::Integer => true,
+			TypeKind::Tuple { types } => types.len() == 0,
+			TypeKind::Array { size, .. } => *size == 0
+		}
 	}
 
 	pub fn eq_implicit(&mut self, other: &mut Self, expr1: Option <&mut ExprKind>, expr2: Option <&mut ExprKind>) -> bool {
@@ -290,10 +317,6 @@ impl Type {
 	}
 
 	pub fn llvm_type(&self) -> LLVMTypeRef {
-		if let Some(ty) = self.llvm_type {
-			return ty
-		}
-
 		match &self.kind {
 			TypeKind::Scalar { index } => {
 				match Self::type_list() {
@@ -397,8 +420,7 @@ impl Type {
 
 	pub const fn from_kind(kind: TypeKind) -> Self {
 		Self {
-			kind,
-			llvm_type: None
+			kind
 		}
 	}
 }

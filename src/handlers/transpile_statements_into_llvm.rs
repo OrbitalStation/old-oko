@@ -6,13 +6,20 @@ use crate::*;
 
 pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 	let stmts_ref = &*stmts as *const [Stmt];
-	for stmt in stmts {
+	for stmt in stmts.iter_mut() {
 		match stmt {
 			Stmt::ExternFun(_) => { /* already done; ignore */ },
 			Stmt::TypeDef(typedef) => create_typedef(typedef),
-			Stmt::FunDef(fundef) => create_fundef(unsafe { &*stmts_ref }, fundef),
+			Stmt::FunDef(fundef) => create_fundef(unsafe { &*stmts_ref }, fundef)
+		}
+	}
 
-			Stmt::Stub => unreachable!()
+	for ty in Type::baked() {
+		match &mut ty.kind {
+			BakedTypeKind::Ordinary(ord) => for method in &mut ord.methods {
+				create_fundef(stmts, &mut method.def)
+			},
+			_ => ()
 		}
 	}
 }
@@ -70,7 +77,7 @@ fn create_typedef(typedef: &TypeDefIndex) {
 pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: &Type) -> LLVMValueRef {
 	let ret_ty = if *ret_ty == Type::UNIT_TUPLE {
 		unsafe { LLVMVoidTypeInContext(llvm_context()) }
-	} else if ret_ty.is_copy() {
+	} else if ret_ty.is_simplistic() {
 		ret_ty.llvm_type()
 	} else {
 		args.push(unsafe { LLVMPointerType(ret_ty.llvm_type(), 0) });

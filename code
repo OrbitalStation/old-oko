@@ -24,7 +24,17 @@ drop x: [i32 x 4] = pass
 
 add x y: u8 = x + y
 
+* ************ *
+* `copy` influences only move semantics, automatic cloning and dropping.
+* It does NOT influence usages of `alloca` instruction to create the value!!!
+* ************ *
+
 ty InnerWrapper = x y z w: i8
+	unwrapX.& -> i8
+		* Don't look at this ugly syntax, it will be sugared soon,
+		*   but for now what is more important is to implement methods :D
+		deref := *i
+		return deref.x
 
 ty Wrapper
 	x: i32

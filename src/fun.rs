@@ -16,7 +16,7 @@ pub struct FunDef {
 
 impl FunDef {
 	pub fn is_ret_by_value(&self) -> bool {
-		self.ret_ty.as_determined().is_copy()
+		self.ret_ty.as_determined().is_simplistic()
 	}
 }
 
@@ -39,7 +39,7 @@ pub struct FunArg {
 impl FunArg {
 	#[inline]
 	pub fn is_by_value(&self) -> bool {
-		self.ty.is_copy()
+		self.ty.is_simplistic()
 	}
 
 	pub fn llvm_type(&self) -> LLVMTypeRef {
