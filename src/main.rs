@@ -13,7 +13,7 @@ fn main() {
 
     bake_types();
 
-    check_each_function_is_unique_and_collect_overloads_into_one(&mut stmts);
+    check_each_function_is_unique(&mut stmts);
 
     parse_body_in_each_function(&mut stmts);
 

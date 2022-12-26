@@ -143,7 +143,7 @@ peg::parser! { grammar okolang() for str {
 		let ty = Type::meet_new_raw_scalar(name.clone(), Some(TypeDef {
 			name,
 			kind,
-			methods: HashMap::new()
+			methods: vec![]
 		}));
 
 		TypeDefIndex {
@@ -208,23 +208,21 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	pub(in crate) rule __expr1_variable(input: ParseFunBodyInput) -> Expr = name:ident() {?
-		Ok(if let Some((var_index, arg)) = input.cur_fun().overloads[input.fun_overload].args.iter().enumerate().find(|(_, x)| x.name == name) {
+		Ok(if let Some((var_index, arg)) = input.cur_fun().args.iter().enumerate().find(|(_, x)| x.name == name) {
 			Expr {
 				kind: ExprKind::Variable {
 					location: ExprKindVariableLocation::FunArg {
-						fun_stmt_index: input.cur_stmt,
-						fun_overload: input.fun_overload,
+						fun: FunLocation::Global { stmt_index: input.cur_stmt },
 						var_index
 					}
 				},
 				ty: arg.ty.clone()
 			}
-		} else if let Some((line, info)) = input.cur_fun().overloads[input.fun_overload].vals.iter().find(|(line, x)| **line < input.line() && x.name == name) {
+		} else if let Some((line, info)) = input.cur_fun().vals.iter().find(|(line, x)| **line < input.line() && x.name == name) {
 			Expr {
 				kind: ExprKind::Variable {
 					location: ExprKindVariableLocation::Val {
-						fun_stmt_index: input.cur_stmt,
-						fun_overload: input.fun_overload,
+						fun: FunLocation::Global { stmt_index: input.cur_stmt },
 						line_def: *line
 					}
 				},
@@ -248,42 +246,29 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
-		= fun:ident() args:__expr1_fun_call_argument(input, open_option_in_arg!(input.fun_by_name(&fun)).1.overloads[0].args.len())?
+		= fun_name:ident() args:__expr1_fun_call_argument(input, open_option_in_arg!(input.fun_by_name(&fun_name)).1.args.len())?
 	{?
-		let (fun_stmt_index, fun) = input.fun_by_name(&fun).ok_or("function call")?;
+		let (stmt_index, fun) = input.fun_by_name(&fun_name).ok_or("function call")?;
 
-		for (fun_overload, overload) in fun.overloads.iter().enumerate() {
-			let args = match &args {
-				Some(x) => x.clone(),
-				None if overload.args.is_empty() => vec![],
-				None => continue
-			};
+		let args = args.unwrap_or(vec![]);
 
-			if args.len() != overload.args.len() {
-				continue
-			}
+		assert_eq!(args.len(), fun.args.len(), "argument number doesn't match in call of `{fun_name}`");
 
-			for (idx, arg) in args.iter().enumerate() {
-				if arg.ty != overload.args[idx].ty {
-					continue
-				}
-			}
-
-			for arg in &args {
-				arg.mark_as_moved_and_panic_if_already(input)
-			}
-
-			return Ok(Expr {
-				kind: ExprKind::FunCall {
-					fun_stmt_index,
-					fun_overload,
-					args
-				},
-				ty: overload.ret_ty.as_determined().clone()
-			})
+		for (idx, arg) in args.iter().enumerate() {
+			assert_eq!(arg.ty, fun.args[idx].ty, "argument types doesn't match in call of `{fun_name}`")
 		}
 
-		panic!("no matching overload for function call of `{}` in function `{}`", fun.name, input.cur_fun().name)
+		for arg in &args {
+			arg.mark_as_moved_and_panic_if_already(input)
+		}
+
+		Ok(Expr {
+			kind: ExprKind::FunCall {
+				fun: FunLocation::Global { stmt_index },
+				args
+			},
+			ty: fun.ret_ty.as_determined().clone()
+		})
 	}
 
 	rule __expr1_extern_fun_call(input: ParseFunBodyInput) -> Expr
@@ -442,7 +427,7 @@ peg::parser! { grammar okolang() for str {
 		expr.mark_as_moved_and_panic_if_already(input);
 		let fun = input.cur_fun_mut();
 		let mut expr = expr;
-		match &mut fun.overloads[input.fun_overload].ret_ty {
+		match &mut fun.ret_ty {
 			FunRetType::Determined(ret) => if expr.ty != *ret {
 				if !expr.ty.try_implicitly_convert(ret, Some(&mut expr.kind)) {
 					panic!("return type mismatch in function `{}`", fun.name)
@@ -463,7 +448,7 @@ peg::parser! { grammar okolang() for str {
 		= mutable:("$")? name:ident() _ ":=" _ init:expr(input)
 	{
 		init.mark_as_moved_and_panic_if_already(input);
-		input.cur_fun_mut().overloads[input.fun_overload].vals.insert(input.line(), VariableInfo {
+		input.cur_fun_mut().vals.insert(input.line(), VariableInfo {
 			name,
 			state: VariableState::valid(&init.ty),
 			init,
@@ -546,18 +531,16 @@ peg::parser! { grammar okolang() for str {
 			Some((is_simple, code)) => {
 				Stmt::FunDef(FunDef {
 					name,
-					overloads: vec![FunSignature {
-						args,
-						body: FunBody::Raw { code },
-						ret_ty: match ret_ty {
-							None if is_simple => FunRetType::Undetermined,
-							None => FunRetType::Determined(Type::UNIT_TUPLE),
-							Some(ty) => FunRetType::Determined(ty)
-						},
-						is_simple,
-						llvm_fun: None,
-						vals: HashMap::new()
-					}]
+					args,
+					body: FunBody::Raw { code },
+					ret_ty: match ret_ty {
+						None if is_simple => FunRetType::Undetermined,
+						None => FunRetType::Determined(Type::UNIT_TUPLE),
+						Some(ty) => FunRetType::Determined(ty)
+					},
+					is_simple,
+					llvm_fun: None,
+					vals: HashMap::new()
 				})
 			}
 		}

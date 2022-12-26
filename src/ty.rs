@@ -1,5 +1,4 @@
 use core::fmt::{Debug, Formatter, Result, Write};
-use std::collections::HashMap;
 use std::ffi::CString;
 use llvm::core::*;
 use llvm::prelude::*;
@@ -13,15 +12,15 @@ pub enum AssociatedMethodKind {
 
 #[derive(Debug, Clone)]
 pub struct AssociatedMethod {
+	pub def: FunDef,
 	pub kind: AssociatedMethodKind,
-	pub signature: FunSignature
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeDef {
 	pub name: String,
 	pub kind: TypeDefKind,
-	pub methods: HashMap <String, AssociatedMethod>
+	pub methods: Vec <AssociatedMethod>
 }
 
 #[derive(Copy, Clone)]

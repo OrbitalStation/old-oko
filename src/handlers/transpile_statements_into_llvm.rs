@@ -18,32 +18,31 @@ pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 }
 
 fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
-	let FunDef { overloads, name } = fundef;
-	for FunSignature { body, llvm_fun, ret_ty, vals, .. } in overloads {
-		let body = match body {
-			FunBody::Baked(exprs) => exprs,
-			_ => unreachable!()
-		};
+	let FunDef { name, body, llvm_fun, ret_ty, vals, .. } = fundef;
 
-		let ret_ty = ret_ty.as_determined();
+	let body = match body {
+		FunBody::Baked(exprs) => exprs,
+		_ => unreachable!()
+	};
 
-		let fun = llvm_fun.unwrap();
+	let ret_ty = ret_ty.as_determined();
 
-		let bb = unsafe { LLVMAppendBasicBlockInContext(llvm_context(), fun, b"entry\0".as_ptr() as *const _) };
-		unsafe { LLVMPositionBuilderAtEnd(llvm_builder(), bb) }
+	let fun = llvm_fun.unwrap();
 
-		let terminated = transpile_complex_body(body, vals, stmts, name, false).0;
+	let bb = unsafe { LLVMAppendBasicBlockInContext(llvm_context(), fun, b"entry\0".as_ptr() as *const _) };
+	unsafe { LLVMPositionBuilderAtEnd(llvm_builder(), bb) }
 
-		if !terminated {
-			if *ret_ty == Type::UNIT_TUPLE {
-				unsafe { LLVMBuildRetVoid(llvm_builder()); }
-			} else {
-				panic!("return statement is missing from function `{name}`")
-			}
+	let terminated = transpile_complex_body(body, vals, stmts, name, false).0;
+
+	if !terminated {
+		if *ret_ty == Type::UNIT_TUPLE {
+			unsafe { LLVMBuildRetVoid(llvm_builder()); }
+		} else {
+			panic!("return statement is missing from function `{name}`")
 		}
-
-		unsafe { LLVMVerifyFunction(fun, LLVMVerifierFailureAction::LLVMAbortProcessAction); }
 	}
+
+	unsafe { LLVMVerifyFunction(fun, LLVMVerifierFailureAction::LLVMAbortProcessAction); }
 }
 
 fn create_typedef(typedef: &TypeDefIndex) {

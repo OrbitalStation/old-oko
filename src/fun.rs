@@ -3,14 +3,9 @@ use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunDef {
 	pub name: String,
-	pub overloads: Vec <FunSignature>
-}
-
-#[derive(Debug, Clone)]
-pub struct FunSignature {
 	pub args: Vec <FunArg>,
 	pub body: FunBody,
 	pub ret_ty: FunRetType,
@@ -19,7 +14,7 @@ pub struct FunSignature {
 	pub vals: HashMap <usize, VariableInfo>
 }
 
-impl FunSignature {
+impl FunDef {
 	pub fn is_ret_by_value(&self) -> bool {
 		self.ret_ty.as_determined().is_copy()
 	}

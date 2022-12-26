@@ -6,15 +6,58 @@ use std::collections::HashMap;
 use llvm::LLVMIntPredicate;
 
 #[derive(Debug, Clone)]
+pub enum FunLocation {
+	Global {
+		stmt_index: usize
+	},
+	Method {
+		ty_index: TypeDefIndex,
+		method_index: usize
+	}
+}
+
+impl FunLocation {
+	pub fn fun <'a> (&self, stmts: &'a [Stmt]) -> &'a FunDef {
+		match self {
+			Self::Global { stmt_index, .. } => match &stmts[*stmt_index] {
+				Stmt::FunDef(def) => def,
+				_ => unreachable!()
+			},
+			Self::Method { ty_index, method_index } => match Type::type_list() {
+				TypeList::Baked(baked) => match &baked[ty_index.index].kind {
+					BakedTypeKind::Ordinary(def) => &def.methods[*method_index].def,
+					_ => unreachable!()
+				},
+				_ => unreachable!()
+			}
+		}
+	}
+
+	pub fn fun_mut <'a> (&self, stmts: &'a mut [Stmt]) -> &'a mut FunDef {
+		match self {
+			Self::Global { stmt_index, .. } => match &mut stmts[*stmt_index] {
+				Stmt::FunDef(def) => def,
+				_ => unreachable!()
+			},
+			Self::Method { ty_index, method_index } => match Type::type_list() {
+				TypeList::Baked(baked) => match &mut baked[ty_index.index].kind {
+					BakedTypeKind::Ordinary(def) => &mut def.methods[*method_index].def,
+					_ => unreachable!()
+				},
+				_ => unreachable!()
+			}
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub enum ExprKindVariableLocation {
 	FunArg {
-		fun_stmt_index: usize,
-		fun_overload: usize,
+		fun: FunLocation,
 		var_index: usize
 	},
 	Val {
-		fun_stmt_index: usize,
-		fun_overload: usize,
+		fun: FunLocation,
 		line_def: usize
 	},
 	AccessField {
@@ -110,8 +153,7 @@ pub enum ExprKind {
 	Tuple(Vec <Expr>),
 	Literal(ExprLiteral),
 	FunCall {
-		fun_stmt_index: usize,
-		fun_overload: usize,
+		fun: FunLocation,
 		args: Vec <Expr>
 	},
 	ExternFunCall {
@@ -179,31 +221,21 @@ fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValue
 fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> LLVMValueRef {
 	match location {
 		ExprKindVariableLocation::FunArg {
-			fun_stmt_index,
-			fun_overload,
+			fun,
 			var_index
 		} => {
-			let fun = match &stmts[*fun_stmt_index] {
-				Stmt::FunDef(fun) => fun,
-				_ => unreachable!()
-			};
-			let overload = &fun.overloads[*fun_overload];
+			let fun = fun.fun(stmts);
 			if is_lvalue {
 				panic!("fun args cannot be mutable; expected an lvalue")
 			}
-			unsafe { LLVMGetParam(overload.llvm_fun.unwrap(), *var_index as _) }
+			unsafe { LLVMGetParam(fun.llvm_fun.unwrap(), *var_index as _) }
 		},
 		ExprKindVariableLocation::Val {
-			fun_stmt_index,
-			fun_overload,
+			fun,
 			line_def
 		} => {
-			let fun = match &stmts[*fun_stmt_index] {
-				Stmt::FunDef(fun) => fun,
-				_ => unreachable!()
-			};
-			let overload = &fun.overloads[*fun_overload];
-			let val = overload.vals.get(line_def).unwrap();
+			let fun = fun.fun(stmts);
+			let val = fun.vals.get(line_def).unwrap();
 			let llvm_value = val.llvm_value.unwrap();
 
 			if !val.init.ty.is_copy() {
@@ -238,19 +270,15 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 	}
 }
 
-fn build_fun_call(fun_stmt_index: usize, fun_overload: usize, args: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
-	let fun = match &stmts[fun_stmt_index] {
-		Stmt::FunDef(fun) => fun,
-		_ => unreachable!()
-	};
-	let overload = &fun.overloads[fun_overload];
+fn build_fun_call(fun: &FunLocation, args: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
+	let fun = fun.fun(stmts);
 	let mut args = args.iter().map(|x| x.to_llvm_value(stmts, fun_name).0).collect::<Vec <_>>();
-	if overload.is_ret_by_value() {
-		unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
+	if fun.is_ret_by_value() {
+		unsafe { LLVMBuildCall(llvm_builder(), fun.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 	} else {
-		let ret = unsafe { LLVMBuildAlloca(llvm_builder(), overload.ret_ty.as_determined().llvm_type(), b"\0".as_ptr() as _) };
+		let ret = unsafe { LLVMBuildAlloca(llvm_builder(), fun.ret_ty.as_determined().llvm_type(), b"\0".as_ptr() as _) };
 		args.push(ret);
-		unsafe { LLVMBuildCall(llvm_builder(), overload.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) };
+		unsafe { LLVMBuildCall(llvm_builder(), fun.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) };
 		ret
 	}
 }
@@ -370,10 +398,8 @@ impl Expr {
 		match &self.kind {
 			ExprKind::Variable { location } => match location {
 				ExprKindVariableLocation::FunArg { .. } => false,
-				ExprKindVariableLocation::Val { fun_stmt_index, fun_overload, line_def} => match &stmts[*fun_stmt_index] {
-					Stmt::FunDef(fun) => fun.overloads[*fun_overload].vals.get(line_def).unwrap().mutable,
-					_ => unreachable!()
-				},
+				ExprKindVariableLocation::Val { fun, line_def}
+					=> fun.fun(stmts).vals.get(line_def).unwrap().mutable,
 				ExprKindVariableLocation::AccessField { i, .. } => i.is_lvalue(stmts)
 			},
 			ExprKind::Dereference { may_be_mutable, .. } => *may_be_mutable,
@@ -399,11 +425,11 @@ impl Expr {
 	pub fn get_variable_state <'a> (&self, input: ParseFunBodyInput <'a>) -> &'a mut VariableState {
 		match &self.kind {
 			ExprKind::Variable { location } => match location {
-				ExprKindVariableLocation::FunArg { fun_stmt_index, fun_overload, var_index } => {
-					&mut input.fun_at_idx(*fun_stmt_index).overloads[*fun_overload].args[*var_index].state
+				ExprKindVariableLocation::FunArg { fun, var_index } => {
+					&mut fun.fun_mut(input.stmts_mut()).args[*var_index].state
 				},
-				ExprKindVariableLocation::Val { fun_stmt_index, fun_overload, line_def } => {
-					&mut input.fun_at_idx(*fun_stmt_index).overloads[*fun_overload].vals.get_mut(line_def).unwrap().state
+				ExprKindVariableLocation::Val { fun, line_def } => {
+					&mut fun.fun_mut(input.stmts_mut()).vals.get_mut(line_def).unwrap().state
 				},
 				ExprKindVariableLocation::AccessField { i, field, def } => {
 					let state = i.get_variable_state(input);
@@ -455,8 +481,8 @@ impl Expr {
 			_ if is_lvalue => panic!("expected an lvalue"),
 
 			ExprKind::Tuple(values) => build_tuple(values, stmts, fun_name),
-			ExprKind::FunCall { fun_stmt_index, fun_overload, args }
-				=> build_fun_call(*fun_stmt_index, *fun_overload, args, stmts, fun_name),
+			ExprKind::FunCall { fun, args }
+				=> build_fun_call(fun, args, stmts, fun_name),
 			ExprKind::ExternFunCall { fun_stmt_index, args }
 				=> build_extern_fun_call(*fun_stmt_index, args, stmts, fun_name),
 			ExprKind::BinOp { left, right, op }
