@@ -49,6 +49,31 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 	for next in fields.iter().skip(1) {
 		cur = cur.dereference_if_ref_or_nop();
 		// TODO: add possibility to use property-like methods here
+		match &cur.ty.kind {
+			TypeKind::Scalar { index } => match &mut Type::baked()[*index].kind {
+				BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == *next) {
+					Some((idx, method)) => {
+						assert_eq!(method.def.args.len(), 0);
+						let ty = method.def.ret_ty_as_determined(input, Some((cur.ty.name(), cur.ty.llvm_type(), method.kind))).clone();
+						cur = Expr {
+							kind: ExprKind::FunCall {
+								fun: FunLocation::Method(FunMethodLocation {
+									ty_index: TypeDefIndex { index: *index },
+									method_index: idx,
+								}),
+								args: vec![cur],
+							},
+							ty,
+						};
+						continue
+					},
+					_ => ()
+				},
+				_ => ()
+			},
+			_ => ()
+		}
+
 		let fields = cur.ty.get_fields_of_struct().expect("cannot access a field of not-a-structure");
 		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == *next).expect("no field with such a name found");
 		cur = Expr {
