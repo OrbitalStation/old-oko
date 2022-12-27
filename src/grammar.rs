@@ -47,7 +47,8 @@ fn check2full_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
 fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 	let mut cur: Expr = __expr1_variable(&fields[0], input).expect("unknown variable");
 	for next in fields.iter().skip(1) {
-		let fields = cur.ty.get_fields_of_struct().expect("expected a structure");
+		cur = cur.dereference_if_ref_or_nop();
+		let fields = cur.ty.get_fields_of_struct().expect("cannot access a field of not-a-structure");
 		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == *next).expect("no field with such a name found");
 		cur = Expr {
 			kind: ExprKind::Variable {
@@ -57,7 +58,7 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 					field: idx
 				}
 			},
-			ty: field.ty.clone(),
+			ty: field.ty.clone()
 		}
 	}
 	cur
@@ -154,7 +155,7 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	pub(in crate) rule typedef_assoc_items(mother_ty: &Type) -> Vec <AssociatedMethod>
-		= items:typedef_assoc_item(mother_ty) ** nl() nl()? { items }
+		= items:typedef_assoc_item(mother_ty)* nl()? { items }
 
 	rule type_definition() -> TypeDefIndex
 		= "ty" __ name:ident() kind:type_definition_body() assoc_items:typedef_assoc_items_raw()

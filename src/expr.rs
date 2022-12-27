@@ -436,6 +436,20 @@ impl Expr {
 		ty: Type::UNIT_TUPLE
 	};
 
+	pub fn dereference_if_ref_or_nop(self) -> Self {
+		match self.ty.kind.clone() {
+			TypeKind::Reference { ty, mutable } => Self {
+				kind: ExprKind::Dereference {
+					ptr: Box::new(self),
+					may_be_mutable: mutable
+				},
+				ty: *ty,
+			},
+			_ => self
+		}
+	}
+
+
 	pub fn is_lvalue(&self, stmts: &[Stmt]) -> bool {
 		match &self.kind {
 			ExprKind::Variable { location } => match location {
@@ -489,7 +503,8 @@ impl Expr {
 				ExprKindVariableLocation::IInMethod { method }
 					=> &mut FunLocation::Method(*method).method_mut().state_of_i
 			},
-			_ => unimplemented!()
+			ExprKind::Dereference { ptr, ..} => ptr.get_variable_state(input),
+			_ => unreachable!()
 		}
 	}
 
@@ -509,7 +524,13 @@ impl Expr {
 			ExprKind::Tuple(elems) | ExprKind::FunCall { args: elems, ..} | ExprKind::ExternFunCall { args: elems, .. } => for elem in elems {
 				elem.mark_as_moved_and_panic_if_already(input)
 			},
-			ExprKind::Dereference { ptr, .. } => assert!(ptr.ty.is_copy(), "cannot move out of a reference"),
+			ExprKind::Dereference { ptr, .. } => {
+				match &ptr.ty.kind {
+					TypeKind::Reference { ty, ..} | TypeKind::Pointer { ty, ..}
+						=> assert!(ty.is_copy(), "cannot move out of a reference"),
+					_ => unimplemented!("cannot do that yet :D")
+				}
+			},
 			ExprKind::Literal(_) | ExprKind::BinOp { .. } | ExprKind::If { .. } => { /* ignore */ },
 		}
 	}

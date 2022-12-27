@@ -40,9 +40,10 @@ idea Iterator
 * 	a default method fabrik, which can be accessed via
 *	`Type.new`, i.e. `Filter.new` in this case
 * By-hand definition of this method would be(in this case):
-*	impl Filter I P
+*	ty Filter
+*		...
 *       * `.*` at the end means this is a static method
-*		new.* iter: I, pred: P -> Filter = <...>
+*		new.* iter: I, pred: P -> Y = <...>
 * Also, those `I` and `P` are generics.
 * If a single uppercase letter is met where a type was expected,
 *   it is automatically added to generics list(if it's not here already, of course)
@@ -51,11 +52,10 @@ ty Filter
 	iter: I
 	pred: P
 
-* `<type> :: <idea>` means implementation of an idea to that given type.
+* `impl <idea> :: <type>` means implementation of an idea to that given type.
 * Rust: `impl <I: ..., P: ...> Iterator for Filter <I, P>`
-* It's also possible to do just `<type> ::` and that would add items to the type itself
-* It is necessary to indicate I and P here
-Filter I P :: Iterator
+* Note that it is necessary to indicate I and P here
+impl Filter I P :: Iterator
 	ty Item = I.Item
 
 	* Takes `i` by a mutable ref
@@ -88,7 +88,7 @@ idea Default = const DEFAULT: Y
 idea Sum = sum.! Y -> Y.Item
 where Y: Iterator
 
-Sum :: I
+impl Sum :: I
 	* Takes `i` by-value(Rust's `self`)
 	sum.! I -> I.Item
 		$s := I.Item.DEFAULT
@@ -120,7 +120,7 @@ loop
 	* That lambda ignores the error given and just
 	*	invokes `continue`
 	* `continue` has the return type of `!`, and
-	* 	`parse::u8 input` has type of `u8`,
+	* 	`parse::u32 input` has type of `u32`,
 	*	but `or` requires for them to be equal,
 	*	so how does it work?
 	* This works because `!` type implements
@@ -191,7 +191,7 @@ ty Map
 
 * `template` not necessary here since all of these are added to generics list automatically
 template I M U
-Map I M :: Iterator
+impl Map I M :: Iterator
 	ty Item = U
 	next.$ -> optional Item = i.iter.next.map i.mutator
 where
