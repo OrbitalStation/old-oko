@@ -68,7 +68,7 @@ fn create_typedef(typedef: &TypeDefIndex) {
 				unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
 			},
 			TypeDefKind::Opaque => { /* ignore */ }
-			_ => todo!()
+			_ => todo!("Enum")
 		},
 		BakedTypeKind::Builtin(_) => { /* ignore */ }
 	}

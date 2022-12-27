@@ -7,26 +7,36 @@ use crate::*;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
 pub enum AssociatedMethodKind {
-	ByRef
+	/// Rust's `&self`
+	ByRef,
+
+	/// Rust's `&mut self`
+	ByMutRef,
+
+	/// Rust's `self`
+	ByValue,
+
+	/// Rust's `mut self`
+	ByMutValue
 }
 
 impl AssociatedMethodKind {
 	pub fn modify_llvm_type(self, ty: LLVMTypeRef) -> LLVMTypeRef {
 		unsafe {
-			match self {
-				Self::ByRef => LLVMPointerType(ty, 0)
-			}
+			// Always a pointer, because types are expected to be one
+			LLVMPointerType(ty, 0)
 		}
 	}
 
 	pub fn modify_type(self, ty: Type) -> Type {
 		match self {
-			Self::ByRef => Type {
+			Self::ByRef | Self::ByMutRef => Type {
 				kind: TypeKind::Reference {
 					ty: Box::new(ty),
-					mutable: false
+					mutable: self == Self::ByMutRef
 				}
-			}
+			},
+			Self::ByValue | Self::ByMutValue => ty
 		}
 	}
 }

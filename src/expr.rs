@@ -457,9 +457,8 @@ impl Expr {
 				ExprKindVariableLocation::Val { fun, line_def}
 					=> fun.fun(stmts).vals.get(line_def).unwrap().mutable,
 				ExprKindVariableLocation::AccessField { i, .. } => i.is_lvalue(stmts),
-				ExprKindVariableLocation::IInMethod { .. }
-					// TODO: Rework once mutable refs are allowed
-					=> false//FunLocation::Method(*method).method().kind == AssociatedMethodKind::ByMutRef
+				ExprKindVariableLocation::IInMethod { method }
+					=> matches!(FunLocation::Method(*method).method().kind, AssociatedMethodKind::ByMutRef | AssociatedMethodKind::ByMutValue)
 			},
 			ExprKind::Dereference { may_be_mutable, .. } => *may_be_mutable,
 			_ => false

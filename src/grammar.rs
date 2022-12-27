@@ -562,10 +562,13 @@ peg::parser! { grammar okolang() for str {
 		/ body:fundef_body() { Some(body) }
 
 	rule __fun_method_type() -> AssociatedMethodKind
-		= _ "." x:['&']
+		= _ "." x:$("$!" / "&" / "$" / "!")
 	{
 		match x {
-			'&' => AssociatedMethodKind::ByRef,
+			"&" => AssociatedMethodKind::ByRef,
+			"$" => AssociatedMethodKind::ByMutRef,
+			"!" => AssociatedMethodKind::ByValue,
+			"$!" => AssociatedMethodKind::ByMutValue,
 			_ => unreachable!()
 		}
 	}
