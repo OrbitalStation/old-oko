@@ -35,8 +35,6 @@ ty Wrapper
 	x: i32
 	y: InnerWrapper
 
-	unwrapX.$ -> i32
-		i.y.z = 4
-		return i.x
+	unwrap_y.& = i.y
 
-	unwrapY.& = i.y
+

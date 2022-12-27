@@ -55,6 +55,11 @@ ty Wrapper = x: i32
     unwrap.& = i.x
 ```
 
+* `.&` - a reference to the type
+* `.$` - a mutable reference
+* `.!` - a moved value of the type
+* `.$!` - a mutable moved value
+
 ## Function definition
 
 ### Short form

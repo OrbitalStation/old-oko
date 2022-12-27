@@ -502,7 +502,7 @@ impl Expr {
 				ExprKindVariableLocation::IInMethod { method }
 					=> &mut FunLocation::Method(*method).method_mut().state_of_i
 			},
-			ExprKind::Dereference { ptr, ..} => ptr.get_variable_state(input),
+			ExprKind::Dereference { .. } => panic!("cannot move out of a reference"),
 			_ => unreachable!()
 		}
 	}
