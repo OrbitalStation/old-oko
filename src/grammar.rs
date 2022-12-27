@@ -48,6 +48,7 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 	let mut cur: Expr = __expr1_variable(&fields[0], input).expect("unknown variable");
 	for next in fields.iter().skip(1) {
 		cur = cur.dereference_if_ref_or_nop();
+		// TODO: add possibility to use property-like methods here
 		let fields = cur.ty.get_fields_of_struct().expect("cannot access a field of not-a-structure");
 		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == *next).expect("no field with such a name found");
 		cur = Expr {
@@ -62,6 +63,29 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 		}
 	}
 	cur
+}
+
+fn get_fun(input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &FunDef, usize, Option <Expr>)> {
+	Some(if components.len() == 1 {
+		let (i, d) = input.fun_by_name(&components[0])?;
+		(FunLocation::Global { stmt_index: i }, d, d.args.len(), None)
+	} else {
+		let fun_name = components.pop().unwrap();
+		let mother_ty = access_field_inner(input, components).dereference_if_ref_or_nop();
+		match mother_ty.ty.kind {
+			TypeKind::Scalar { index } => match &Type::baked()[index].kind {
+				BakedTypeKind::Ordinary(def) => match def.methods.iter().enumerate().find(|(_, x)| x.def.name == fun_name) {
+					Some((idx, method)) => (FunLocation::Method(FunMethodLocation {
+						ty_index: TypeDefIndex { index },
+						method_index: idx,
+					}), &method.def, method.def.args.len(), Some(mother_ty)),
+					None => return None
+				},
+				BakedTypeKind::Builtin(_) => return None
+			},
+			_ => return None
+		}
+	})
 }
 
 fn assignment(input: ParseFunBodyInput, mut lvalue: Expr, mut new: Expr) -> (FunStmt, Type) {
@@ -291,29 +315,34 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
+	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> (FunLocation, &'a FunDef, usize, Option <Expr>)
+		= names:ident() ++ (_ "." _)
+	{? get_fun(input, names).ok_or("function call") }
+
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
-		= fun_name:ident() args:__expr1_fun_call_argument(input, open_option_in_arg!(input.fun_by_name(&fun_name)).1.args.len())?
+		= i:__expr1_fun_call_helper(input) args:__expr1_fun_call_argument(input, i.2)?
 	{?
-		let (stmt_index, fun) = input.fun_by_name(&fun_name).ok_or("function call")?;
+		let (fun_loc, fun_def, _, extra_arg) = i;
 
-		let args = args.unwrap_or(vec![]);
+		let mut args = args.unwrap_or(vec![]);
 
-		assert_eq!(args.len(), fun.args.len(), "argument number doesn't match in call of `{fun_name}`");
+		assert_eq!(args.len(), fun_def.args.len(), "argument number doesn't match in call of `{}`", fun_def.name);
 
 		for (idx, arg) in args.iter().enumerate() {
-			assert_eq!(arg.ty, fun.args[idx].ty, "argument types doesn't match in call of `{fun_name}`")
+			assert_eq!(arg.ty, fun_def.args[idx].ty, "argument types doesn't match in call of `{}`", fun_def.name);
+			arg.mark_as_moved_and_panic_if_already(input)
 		}
 
-		for arg in &args {
-			arg.mark_as_moved_and_panic_if_already(input)
+		if let Some(extra_arg) = extra_arg {
+			args.insert(0, extra_arg)
 		}
 
 		Ok(Expr {
 			kind: ExprKind::FunCall {
-				fun: FunLocation::Global { stmt_index },
+				fun: fun_loc,
 				args
 			},
-			ty: fun.ret_ty.as_determined().clone()
+			ty: fun_def.ret_ty.as_determined().clone()
 		})
 	}
 

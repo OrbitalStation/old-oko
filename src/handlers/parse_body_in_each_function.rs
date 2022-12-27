@@ -3,6 +3,21 @@ use crate::*;
 
 pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
     let mut line = 0;
+    let mut input = ParseFunBodyInputStruct::new(stmts, &mut line);
+    for (ty_idx, ty) in Type::baked().iter_mut().enumerate() {
+        if let BakedTypeKind::Ordinary(def) = unsafe { &mut *(&mut ty.kind as *mut BakedTypeKind) } {
+            for (method_index, method) in def.methods.iter_mut().enumerate() {
+                input.fun_loc = FunLocation::Method(FunMethodLocation {
+                    ty_index: TypeDefIndex { index: ty_idx },
+                    method_index }
+                );
+                let body = handle_function1(&method.def, &input);
+                handle_function2(&mut method.def, body, Some((ty.name(), ty.llvm_type, method.kind)));
+            }
+        }
+    }
+
+    line = 0;
     for input in ParseFunBodyInputStruct::new(stmts, &mut line) {
         let mut is_extern_fun = false;
 
@@ -27,21 +42,6 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
         }
 
         handle_function2(input.cur_fun_mut(), body, None)
-    }
-
-    line = 0;
-    let mut input = ParseFunBodyInputStruct::new(stmts, &mut line);
-    for (ty_idx, ty) in Type::baked().iter_mut().enumerate() {
-        if let BakedTypeKind::Ordinary(def) = unsafe { &mut *(&mut ty.kind as *mut BakedTypeKind) } {
-            for (method_index, method) in def.methods.iter_mut().enumerate() {
-                input.fun_loc = FunLocation::Method(FunMethodLocation {
-                    ty_index: TypeDefIndex { index: ty_idx },
-                    method_index }
-                );
-                let body = handle_function1(&method.def, &input);
-                handle_function2(&mut method.def, body, Some((ty.name(), ty.llvm_type, method.kind)));
-            }
-        }
     }
 }
 
@@ -72,7 +72,7 @@ fn handle_function2(fun: &mut FunDef, body: Vec <FunStmt>, method_info: Option <
     fun.body = FunBody::Baked(body);
 }
 
-fn handle_function1 (fun: &FunDef, input: ParseFunBodyInput) -> Vec <FunStmt> {
+fn handle_function1(fun: &FunDef, input: ParseFunBodyInput) -> Vec <FunStmt> {
     let code = match &fun.body {
         FunBody::Raw { code } => code,
         _ => unreachable!()
