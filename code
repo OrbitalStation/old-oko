@@ -5,8 +5,6 @@ foo x: Opaque -> Opaque = extern
 
 puts str: *u8 -> i32 = extern
 
-pass = ()
-
 * Sadly not smart enough to infer the type of the function on its own
 fib n: u64 -> u64 = if n == 0 or n == 1 do 1 else (fib n - 1) + fib n - 2
 
@@ -33,6 +31,6 @@ ty Wrapper
 	x: i32
 	y: InnerWrapper
 
-	unwrapX.& = i.x
+	unwrapX.& = pass
 
 unwrapX i: &Wrapper = i.unwrapX

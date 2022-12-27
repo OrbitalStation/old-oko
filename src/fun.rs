@@ -18,6 +18,14 @@ impl FunDef {
 	pub fn is_ret_by_value(&self) -> bool {
 		self.ret_ty.as_determined().is_simplistic()
 	}
+
+	pub fn ret_ty_as_determined(&mut self, input: ParseFunBodyInput, method_info: Option <(&str, LLVMTypeRef, AssociatedMethodKind)>) -> &Type {
+		if let FunRetType::Determined(ty) = unsafe { &*(&self.ret_ty as *const FunRetType) } {
+			return ty
+		}
+		parse_fun_body(self, input, method_info);
+		self.ret_ty.as_determined()
+	}
 }
 
 #[derive(Debug, Clone)]

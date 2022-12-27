@@ -44,6 +44,13 @@ impl ParseFunBodyInputStruct {
 		})
 	}
 
+	pub fn fun_by_name_mut(&self, name: &str) -> Option <(usize, &mut FunDef)> {
+		self.stmts_mut().iter_mut().enumerate().find_map(|(idx, fun)| match fun {
+			Stmt::FunDef(fun) if fun.name == name => Some((idx, fun)),
+			_ => None
+		})
+	}
+
 	pub fn extern_fun_by_name(&self, name: &str) -> Option <(usize, &ExternFun)> {
 		self.stmts().iter().enumerate().find_map(|(idx, fun)| match fun {
 			Stmt::ExternFun(fun) if fun.name == name => Some((idx, fun)),

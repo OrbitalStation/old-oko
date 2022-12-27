@@ -5,13 +5,13 @@ use core::fmt::{Debug, Formatter, Result};
 use std::collections::HashMap;
 use llvm::LLVMIntPredicate;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct FunMethodLocation {
 	pub ty_index: TypeDefIndex,
 	pub method_index: usize
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum FunLocation {
 	Global {
 		stmt_index: usize

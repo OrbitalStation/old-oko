@@ -55,7 +55,7 @@ pub struct TypeDef {
 	pub methods: Vec <AssociatedMethod>
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct TypeDefIndex {
 	/// Index of a type definition in the type list
 	pub index: usize
@@ -220,6 +220,14 @@ impl Debug for Type {
 
 impl Type {
 	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
+
+	pub fn name(&self) -> &str {
+		match &self.kind {
+			TypeKind::Scalar { index } => Self::baked()[*index].name(),
+			TypeKind::Reference { ty, .. } => ty.name(),
+			_ => unreachable!()
+		}
+	}
 
 	/// Will make difference from `is_simplistic` when copy structs would appear
 	pub fn is_copy(&self) -> bool {

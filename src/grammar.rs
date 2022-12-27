@@ -65,20 +65,24 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 	cur
 }
 
-fn get_fun(input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &FunDef, usize, Option <Expr>)> {
+fn get_fun(input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &mut FunDef, usize, Option <Expr>)> {
 	Some(if components.len() == 1 {
-		let (i, d) = input.fun_by_name(&components[0])?;
-		(FunLocation::Global { stmt_index: i }, d, d.args.len(), None)
+		let (i, d) = input.fun_by_name_mut(&components[0])?;
+		let len = d.args.len();
+		(FunLocation::Global { stmt_index: i }, d, len, None)
 	} else {
 		let fun_name = components.pop().unwrap();
 		let mother_ty = access_field_inner(input, components).dereference_if_ref_or_nop();
 		match mother_ty.ty.kind {
-			TypeKind::Scalar { index } => match &Type::baked()[index].kind {
-				BakedTypeKind::Ordinary(def) => match def.methods.iter().enumerate().find(|(_, x)| x.def.name == fun_name) {
-					Some((idx, method)) => (FunLocation::Method(FunMethodLocation {
-						ty_index: TypeDefIndex { index },
-						method_index: idx,
-					}), &method.def, method.def.args.len(), Some(mother_ty)),
+			TypeKind::Scalar { index } => match &mut Type::baked()[index].kind {
+				BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == fun_name) {
+					Some((idx, method)) => {
+						let len = method.def.args.len();
+						(FunLocation::Method(FunMethodLocation {
+							ty_index: TypeDefIndex { index },
+							method_index: idx,
+						}), &mut method.def, len, Some(mother_ty))
+					},
 					None => return None
 				},
 				BakedTypeKind::Builtin(_) => return None
@@ -315,14 +319,14 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> (FunLocation, &'a FunDef, usize, Option <Expr>)
+	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> (FunLocation, &'a mut FunDef, usize, Option <Expr>)
 		= names:ident() ++ (_ "." _)
 	{? get_fun(input, names).ok_or("function call") }
 
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
 		= i:__expr1_fun_call_helper(input) args:__expr1_fun_call_argument(input, i.2)?
 	{?
-		let (fun_loc, fun_def, _, extra_arg) = i;
+		let (fun_loc, fun_def, _, i_of_method) = i;
 
 		let mut args = args.unwrap_or(vec![]);
 
@@ -333,16 +337,23 @@ peg::parser! { grammar okolang() for str {
 			arg.mark_as_moved_and_panic_if_already(input)
 		}
 
-		if let Some(extra_arg) = extra_arg {
-			args.insert(0, extra_arg)
-		}
+		let mut buf;
+
+		let method_info = if let Some(i) = i_of_method {
+			let llvm = i.ty.llvm_type();
+			buf = i.ty.name().to_string();
+			args.insert(0, i);
+			Some((buf.as_str(), llvm, fun_loc.method().kind))
+		} else {
+			None
+		};
 
 		Ok(Expr {
 			kind: ExprKind::FunCall {
 				fun: fun_loc,
 				args
 			},
-			ty: fun_def.ret_ty.as_determined().clone()
+			ty: fun_def.ret_ty_as_determined(input, method_info).clone()
 		})
 	}
 
