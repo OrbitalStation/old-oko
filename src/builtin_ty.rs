@@ -41,6 +41,7 @@ pub struct BuiltinType {
 	pub kind: BuiltinTypeKind
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BuiltinTypeKind {
 	Signed,
 	Unsigned,

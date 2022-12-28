@@ -2,7 +2,7 @@ use crate::*;
 
 #[derive(Debug)]
 pub enum Stmt {
-	TypeDef(TypeDefIndex),
+	TypeDef(TypeKindScalarLocation),
 	FunDef(FunDef),
 	ExternFun(ExternFun)
 }

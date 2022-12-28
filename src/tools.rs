@@ -31,8 +31,9 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 					unsafe {
 						let load = LLVMBuildLoad(llvm_builder(), expr.to_llvm_value(stmts, name).0, b"\0".as_ptr() as _);
 						let fun = LLVMGetBasicBlockParent(LLVMGetInsertBlock(llvm_builder()));
-						let first_arg = LLVMGetLastParam(fun);
-						LLVMBuildStore(llvm_builder(), load, first_arg);
+						let last_arg = LLVMGetLastParam(fun);
+						LLVMDumpValue(last_arg);
+						LLVMBuildStore(llvm_builder(), load, last_arg);
 						LLVMBuildRetVoid(llvm_builder());
 					}
 				};

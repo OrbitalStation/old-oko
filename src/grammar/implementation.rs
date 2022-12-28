@@ -48,7 +48,7 @@ peg::parser! { grammar okolang() for str {
 
 	rule __non_ptr_ty(existing: bool, mother_ty: Option <&Type>) -> Type
 		= "Y" !__ident_continuation() {? Ok(mother_ty.ok_or("type")?.clone()) }
-		/ name:ident() {? if existing { Type::get_existing_scalar(name).ok_or("type") } else { Ok(Type::meet_new_raw_scalar(name, None)) } }
+		/ name:ident() {? if existing { Type::get_existing_scalar(name).ok_or("type") } else { Ok(Type::meet_new_raw_scalar(None, name, None)) } }
 		/ "[" _ ty:__ty(existing, mother_ty) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
 		/ "(" _ ty:__ty(existing, mother_ty) _ ")" { ty }
 		/ "(" _ types:(__ty(existing, mother_ty) ** (_ "," _)) _ ("," _)? ")" { Type::from_kind(TypeKind::Tuple { types }) }
@@ -67,26 +67,28 @@ peg::parser! { grammar okolang() for str {
 	rule typedef_assoc_items_raw() -> String
 		= line:complex_body_line_with_nl()* { line.join("\n") }
 
-	rule typedef_assoc_item(mother_ty: &Type) -> AssociatedMethod
+	rule typedef_assoc_item(mother_ty: &Type) -> AssociatedItem
 		= fun:fun_or_extern_fun_definition(Some(mother_ty))
 	{
-		AssociatedMethod {
+		AssociatedItem::Method(AssociatedMethod {
 			def: match fun.0 {
 				Stmt::FunDef(def) => def,
 				_ => unreachable!()
 			},
 			kind: fun.1.unwrap(),
 			state_of_i: VariableState::valid(mother_ty)
-		}
+		})
 	}
+		/ type_definition(Some(mother_ty.as_scalar_loc()))
+	{ AssociatedItem::Type }
 
-	pub(in crate) rule typedef_assoc_items(mother_ty: &Type) -> Vec <AssociatedMethod>
+	pub(in crate) rule typedef_assoc_items(mother_ty: &Type) -> Vec <AssociatedItem>
 		= items:typedef_assoc_item(mother_ty)* nl()? { items }
 
-	rule __type_definition_add() -> Type
+	rule __type_definition_add(mother: Option <&TypeKindScalarLocation>) -> Type
 		= name:ident()
 	{
-		Type::meet_new_raw_scalar(name.clone(), Some(TypeDef {
+		Type::meet_new_raw_scalar(mother, name.clone(), Some(TypeDef {
 			name,
 			// Will be replaced
 			kind: TypeDefKind::Opaque,
@@ -95,24 +97,21 @@ peg::parser! { grammar okolang() for str {
 		}))
 	}
 
-	rule type_definition() -> TypeDefIndex
-		= "ty" __ ty:__type_definition_add() kind:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
+	rule type_definition(mother: Option <&TypeKindScalarLocation>) -> TypeKindScalarLocation
+		= "ty" __ ty:__type_definition_add(mother) kind:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
 	{
-		let index = ty.as_scalar_index();
+		let loc = ty.as_scalar_loc();
 
 		let items = typedef_assoc_items(&(assoc_items + "\n"), &ty).unwrap();
 
-		match &mut Type::raw()[index] {
-			RawType::Backed(typedef) => {
-				typedef.methods = items;
-				typedef.kind = kind;
-			},
-			_ => unreachable!()
-		}
+		let typedef = loc.type_def().unwrap();
+		typedef.methods = items.into_iter().filter_map(|x| match x {
+			AssociatedItem::Method(x) => Some(x),
+			_ => None
+		}).collect();
+		typedef.kind = kind;
 
-		TypeDefIndex {
-			index
-		}
+		loc.clone()
 	}
 
 	rule type_definition_body(mother_ty: &Type) -> TypeDefKind = kind:(
@@ -194,17 +193,17 @@ peg::parser! { grammar okolang() for str {
 			}
 		} else if name == "i" {
 			if let FunLocation::Method(method) = &input.fun_loc {
-				let kind = FunLocation::Method(*method).method().kind;
+				let kind = FunLocation::Method(method.clone()).method().kind;
 				if kind != AssociatedMethodKind::Static {
 					Expr {
 						kind: ExprKind::Variable {
 							location: ExprKindVariableLocation::IInMethod {
-								method: *method
+								method: method.clone()
 							}
 						},
 						ty: kind.modify_type(Type {
 							kind: TypeKind::Scalar {
-								index: method.ty_index.index
+								loc: method.ty_loc.clone()
 							}
 						})
 					}
@@ -356,7 +355,7 @@ peg::parser! { grammar okolang() for str {
 	rule __expr1_if(input: ParseFunBodyInput) -> Expr
 		= "if" __ cond:expr(input) body:__expr1_if_body(input)
 	{
-		assert_eq!(cond.ty, Type::get_builtin("bool"), "`if` condition must be of `bool` type");
+		assert_eq!(cond.ty, Type::get_by_name("bool"), "`if` condition must be of `bool` type");
 		let (yes, no, ty) = body;
 		Expr {
 			kind: ExprKind::If {
@@ -433,7 +432,7 @@ peg::parser! { grammar okolang() for str {
 			},
 			ret@FunRetType::Undetermined => {
 				if matches!(expr.ty.kind, TypeKind::Integer) {
-					expr.ty.try_implicitly_convert(&Type::get_builtin("i32"), Some(&mut expr.kind));
+					expr.ty.try_implicitly_convert(&Type::get_by_name("i32"), Some(&mut expr.kind));
 				}
 				*ret = FunRetType::Determined(expr.ty.clone())
 			}
@@ -569,7 +568,7 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule stmt() -> Stmt
-		= x:type_definition() { Stmt::TypeDef(x) }
+		= x:type_definition(None) { Stmt::TypeDef(x) }
 		/ x:fun_or_extern_fun_definition(None) { x.0 }
 
 	rule __global_whitespace() = quiet!{[' ' | '\n' | '\t']*}

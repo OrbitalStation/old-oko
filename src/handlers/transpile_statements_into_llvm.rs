@@ -9,17 +9,8 @@ pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 	for stmt in stmts.iter_mut() {
 		match stmt {
 			Stmt::ExternFun(_) => { /* already done; ignore */ },
-			Stmt::TypeDef(typedef) => create_typedef(typedef),
+			Stmt::TypeDef(typedef) => create_typedef(unsafe { &*stmts_ref }, typedef.baked().unwrap()),
 			Stmt::FunDef(fundef) => create_fundef(unsafe { &*stmts_ref }, fundef)
-		}
-	}
-
-	for ty in Type::baked() {
-		match &mut ty.kind {
-			BakedTypeKind::Ordinary(ord) => for method in &mut ord.methods {
-				create_fundef(stmts, &mut method.def)
-			},
-			_ => ()
 		}
 	}
 }
@@ -52,23 +43,32 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 	unsafe { LLVMVerifyFunction(fun, LLVMVerifierFailureAction::LLVMAbortProcessAction); }
 }
 
-fn create_typedef(typedef: &TypeDefIndex) {
+fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 	// At this point `bake_types()` has already created the type name
 	// but has not set the body, so that's what we gonna do here
 
-	let baked = match Type::type_list() {
-		TypeList::Baked(baked) => &baked[typedef.index],
-		_ => unreachable!()
-	};
+	match &mut baked.kind {
+		BakedTypeKind::Ordinary(typedef) => {
+			match &typedef.kind {
+				TypeDefKind::Struct { fields } => {
+					let mut fields = fields.iter().map(|x| x.ty.llvm_type()).collect::<Vec <_>>();
+					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
+				},
+				TypeDefKind::Opaque => { /* ignore */ }
+				_ => todo!("Enum")
+			}
 
-	match &baked.kind {
-		BakedTypeKind::Ordinary(typedef) => match &typedef.kind {
-			TypeDefKind::Struct { fields } => {
-				let mut fields = fields.iter().map(|x| x.ty.llvm_type()).collect::<Vec <_>>();
-				unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
-			},
-			TypeDefKind::Opaque => { /* ignore */ }
-			_ => todo!("Enum")
+			for method in &mut typedef.methods {
+				create_fundef(stmts, &mut method.def)
+			}
+
+			let baked = match &mut typedef.subtypes {
+                TypeList::Baked(baked) => baked,
+                _ => unreachable!()
+            };
+			for ty in baked {
+				create_typedef(stmts, ty)
+			}
 		},
 		BakedTypeKind::Builtin(_) => { /* ignore */ }
 	}

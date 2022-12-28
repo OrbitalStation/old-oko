@@ -3,18 +3,7 @@ use crate::*;
 pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
     let mut line = 0;
     let mut input = ParseFunBodyInputStruct::new(stmts, &mut line);
-    for (ty_idx, ty) in Type::baked().iter_mut().enumerate() {
-        if let BakedTypeKind::Ordinary(def) = unsafe { &mut *(&mut ty.kind as *mut BakedTypeKind) } {
-            input.mother_ty = Some(Type::from_kind(TypeKind::Scalar { index: ty_idx }));
-            for (method_index, method) in def.methods.iter_mut().enumerate() {
-                input.fun_loc = FunLocation::Method(FunMethodLocation {
-                    ty_index: TypeDefIndex { index: ty_idx },
-                    method_index
-                });
-                parse_fun_body(&mut method.def, &input, Some(method.kind))
-            }
-        }
-    }
+    parse_methods_of_type_list(&mut input, Type::type_list(), None);
 
     line = 0;
     for input in ParseFunBodyInputStruct::new(stmts, &mut line) {
@@ -26,6 +15,35 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
             },
             _ => continue
         };
+    }
+}
+
+fn parse_methods_of_type_list(input: &mut ParseFunBodyInputStruct, type_list: &mut TypeList, parent_loc: Option <TypeKindScalarLocation>) {
+    let baked = match type_list {
+        TypeList::Baked(baked) => baked,
+        _ => unreachable!()
+    };
+
+    for (ty_idx, ty) in baked.iter_mut().enumerate() {
+        if let BakedTypeKind::Ordinary(def) = unsafe { &mut *(&mut ty.kind as *mut BakedTypeKind) } {
+            let ty_loc = if let Some(parent_loc) = &parent_loc {
+                TypeKindScalarLocation::AssociatedItem {
+                    index: ty_idx,
+                    mother: Box::new(parent_loc.clone()),
+                }
+            } else {
+                TypeKindScalarLocation::Global { index: ty_idx }
+            };
+            input.mother_ty = Some(Type::from_kind(TypeKind::Scalar { loc: ty_loc.clone() }));
+            for (method_index, method) in def.methods.iter_mut().enumerate() {
+                input.fun_loc = FunLocation::Method(FunMethodLocation {
+                    ty_loc: ty_loc.clone(),
+                    method_index
+                });
+                parse_fun_body(&mut method.def, &input, Some(method.kind))
+            }
+            parse_methods_of_type_list(input, &mut def.subtypes, Some(ty_loc))
+        }
     }
 }
 
@@ -63,7 +81,7 @@ pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: O
         if kind != AssociatedMethodKind::Static {
             args.insert(0, kind.modify_llvm_type(ty.llvm_type()));
         }
-        create_llvm_fun(&format!("{}.{}", ty.name(), fun.name), args, ret_ty)
+        create_llvm_fun(&format!("{}.{}", ty.name_for_llvm(), fun.name), args, ret_ty)
     } else {
         create_llvm_fun(&fun.name, args, ret_ty)
     });

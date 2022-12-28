@@ -33,9 +33,13 @@ ty Wrapper
 	x: i32
 	y: InnerWrapper
 
+	ty Inner
+		f: i32
+
+		new.* i: &Y = i
+
 	new.* i: &Y = i
 
 	unwrap.& = i.y.z
 
 	test.* i: &Y = (Y.new i).x
-

@@ -60,21 +60,6 @@ pub struct TypeDef {
 	pub subtypes: TypeList
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct TypeDefIndex {
-	/// Index of a type definition in the type list
-	pub index: usize
-}
-
-impl Debug for TypeDefIndex {
-	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
-		match Type::type_list() {
-			TypeList::Raw(raw) => raw[self.index].as_backed(),
-			TypeList::Baked(baked) => baked[self.index].as_ordinary()
-		}.fmt(f)
-	}
-}
-
 #[derive(Debug, Clone)]
 pub enum TypeDefKind {
 	Enum {
@@ -162,8 +147,75 @@ impl PartialEq for Type {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
+pub enum TypeKindScalarLocation {
+	Global { index: usize },
+	AssociatedItem {
+		index: usize,
+		mother: Box <TypeKindScalarLocation>
+	}
+}
+
+impl TypeKindScalarLocation {
+	pub fn get_list_and_index(&self) -> (&'static mut TypeList, usize) {
+		match self {
+			Self::Global { index } => (Type::type_list(), *index),
+			Self::AssociatedItem { index, mother } => (&mut mother.type_def().unwrap().subtypes, *index)
+		}
+	}
+
+	pub fn type_def(&self) -> Option <&'static mut TypeDef> {
+		let (list, index) = self.get_list_and_index();
+
+		match list {
+			TypeList::Baked(baked) => match &mut baked[index].kind {
+				BakedTypeKind::Ordinary(def) => Some(def),
+				_ => None
+			},
+			TypeList::Raw(raw) => match &mut raw[index] {
+				RawType::Backed(backed) => Some(backed),
+				_ => None
+			}
+		}
+	}
+
+	pub fn baked(&self) -> Option <&'static mut BakedType> {
+		let (list, index) = self.get_list_and_index();
+
+		match list {
+			TypeList::Baked(baked) => Some(&mut baked[index]),
+			_ => None
+		}
+	}
+
+	pub fn builtin(&self) -> Option <&'static BuiltinType> {
+		let (list, index) = self.get_list_and_index();
+
+		match list {
+			TypeList::Baked(baked) => match &baked[index].kind {
+				BakedTypeKind::Builtin(idx) => Some(&BUILTIN_TYPES[*idx]),
+				_ => None
+			},
+			TypeList::Raw(_) => unimplemented!()
+		}
+	}
+
+	pub fn name(&self) -> String {
+		match self {
+			Self::Global { index } => match Type::type_list() {
+				TypeList::Raw(raw) => raw[*index].name().to_string(),
+				TypeList::Baked(baked) => baked[*index].name().to_string()
+			},
+			Self::AssociatedItem { index, mother } => format!("{}.{}", mother.name(), match &mother.type_def().unwrap().subtypes {
+				TypeList::Baked(baked) => baked[*index].name(),
+				TypeList::Raw(raw) => raw[*index].name()
+			})
+		}
+	}
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum TypeKind {
-	Scalar { index: usize },
+	Scalar { loc: TypeKindScalarLocation },
 	Pointer {
 		ty: Box <Type>,
 		ptrs: TypePointers
@@ -183,12 +235,7 @@ pub enum TypeKind {
 impl Debug for Type {
 	fn fmt(&self, f: &mut Formatter <'_>) -> Result {
 		match &self.kind {
-			TypeKind::Scalar { index } => {
-				match Self::type_list() {
-					TypeList::Raw(raw) => f.write_str(raw[*index].name()),
-					TypeList::Baked(baked) => f.write_str(baked[*index].name())
-				}
-			},
+			TypeKind::Scalar { loc } => f.write_str(&loc.name()),
 			TypeKind::Pointer { ty, ptrs } => {
 				ptrs.fmt(f)?;
 				ty.fmt(f)
@@ -226,10 +273,10 @@ impl Debug for Type {
 impl Type {
 	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
 
-	pub fn name(&self) -> &str {
+	pub fn name_for_llvm(&self) -> String {
 		match &self.kind {
-			TypeKind::Scalar { index } => Self::baked()[*index].name(),
-			TypeKind::Reference { ty, .. } => ty.name(),
+			TypeKind::Scalar { loc } => loc.name(),
+			TypeKind::Reference { ty, .. } => ty.name_for_llvm(),
 			_ => unreachable!()
 		}
 	}
@@ -239,11 +286,13 @@ impl Type {
 		self.is_simplistic()
 	}
 
-	pub fn get_builtin(name: &str) -> Self {
+	pub fn get_by_name(name: &str) -> Self {
 		match Self::type_list() {
 			TypeList::Baked(baked) => {
 				Self::from_kind(TypeKind::Scalar {
-					index: baked.iter().enumerate().find(|(_, x)| x.name() == name).unwrap().0
+					loc: TypeKindScalarLocation::Global {
+						index: baked.iter().enumerate().find(|(_, x)| x.name() == name).unwrap().0
+					}
 				})
 			},
 			_ => unimplemented!()
@@ -251,18 +300,18 @@ impl Type {
 	}
 
 	pub fn get_fields_of_struct(&self) -> Option <&'static Vec <StructField>> {
-		if let TypeKind::Scalar { index } = self.kind {
-			match Self::type_list() {
-				TypeList::Baked(baked) => match &baked[index].kind {
-					BakedTypeKind::Ordinary(def) => if let TypeDefKind::Struct { fields } = &def.kind {
-						return Some(fields)
-					},
-					_ => ()
+		if let TypeKind::Scalar { loc } = &self.kind {
+			match loc.type_def() {
+				Some(x) => if let TypeDefKind::Struct { fields } = &x.kind {
+					Some(fields)
+				} else {
+					None
 				},
-				_ => ()
+				None => None
 			}
+		} else {
+			None
 		}
-		None
 	}
 
 	#[inline]
@@ -273,7 +322,7 @@ impl Type {
 	/// A simplistic type is a type that can be used directly in LLVM-IR
 	pub fn is_simplistic(&self) -> bool {
 		match &self.kind {
-			TypeKind::Scalar { index } => matches!(Self::baked()[*index].kind, BakedTypeKind::Builtin(_)),
+			TypeKind::Scalar { loc } => loc.builtin().is_some(),
 			TypeKind::Pointer { .. } | TypeKind::Reference { .. } | TypeKind::Integer => true,
 			TypeKind::Tuple { types } => types.len() == 0,
 			TypeKind::Array { size, .. } => *size == 0
@@ -314,15 +363,9 @@ impl Type {
 		}
 	}
 
-	fn __is_builtin_smth(&self, f: for <'a> fn(&'a BuiltinTypeKind) -> bool) -> bool {
+	fn __is_builtin_smth(&self, f: fn(BuiltinTypeKind) -> bool) -> bool {
 		match &self.kind {
-			TypeKind::Scalar { index } => match Self::type_list() {
-				TypeList::Baked(baked) => match &baked[*index].kind {
-					BakedTypeKind::Builtin(idx) => f(&BUILTIN_TYPES[*idx].kind),
-					_ => false
-				},
-				_ => unimplemented!()
-			},
+			TypeKind::Scalar { loc } => loc.builtin().map(|x| f(x.kind)).unwrap_or(false),
 			_ => false
 		}
 	}
@@ -341,9 +384,10 @@ impl Type {
 
 	pub fn llvm_type(&self) -> LLVMTypeRef {
 		match &self.kind {
-			TypeKind::Scalar { index } => {
-				match Self::type_list() {
-					TypeList::Baked(baked) => baked[*index].llvm_type,
+			TypeKind::Scalar { loc } => {
+				let (list, index) = loc.get_list_and_index();
+				match list {
+					TypeList::Baked(baked) => baked[index].llvm_type,
 					TypeList::Raw(_) => unimplemented!()
 				}
 			},
@@ -366,7 +410,7 @@ impl Type {
 				let mut types = types.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
 				unsafe { LLVMStructType(types.as_mut_ptr(), types.len() as _, 0) }
 			},
-			TypeKind::Integer => Self::get_builtin("i32").llvm_type()
+			TypeKind::Integer => Self::get_by_name("i32").llvm_type()
 		}
 	}
 
@@ -389,40 +433,56 @@ impl Type {
 		}
 	}
 
-	pub fn as_scalar_index(&self) -> usize {
-		match &self.kind {
-			TypeKind::Scalar { index, .. } => *index,
-			_ => unimplemented!()
-		}
-	}
-
-	pub fn meet_new_raw_scalar(name: String, typedef: Option <TypeDef>) -> Self {
+	pub fn meet_new_raw_scalar(mother: Option <&TypeKindScalarLocation>, name: String, typedef: Option <TypeDef>) -> Self {
 		Self::from_kind(TypeKind::Scalar {
-			index: match Self::raw().iter_mut().enumerate().find(|(_, ty)| ty.name() == name) {
-				Some((idx, ty)) => {
-					if let Some(typedef) = typedef {
-						if ty.is_backed() {
-							panic!("type `{name}` already exists")
-						} else {
-							*ty = RawType::Backed(typedef)
+			loc: {
+				let list = match mother.map(|mother| &mut mother.type_def().unwrap().subtypes).unwrap_or(Self::type_list()) {
+					TypeList::Raw(raw) => raw,
+					_ => unimplemented!()
+				};
+				let index = match list.iter_mut().enumerate().find(|(_, ty)| ty.name() == name) {
+					Some((idx, ty)) => {
+						if let Some(typedef) = typedef {
+							if ty.is_backed() {
+								panic!("type `{name}` already exists")
+							} else {
+								*ty = RawType::Backed(typedef)
+							}
 						}
+						idx
+					},
+					None => {
+						list.push(match typedef {
+							Some(x) => RawType::Backed(x),
+							None => RawType::Stub(name)
+						});
+						list.len() - 1
 					}
-					idx
-				},
-				None => {
-					Self::raw().push(match typedef {
-						Some(x) => RawType::Backed(x),
-						None => RawType::Stub(name)
-					});
-					Self::raw().len() - 1
+				};
+				if let Some(mother) = mother {
+					TypeKindScalarLocation::AssociatedItem {
+						mother: Box::new(mother.clone()),
+						index
+					}
+				} else {
+					TypeKindScalarLocation::Global {
+						index
+					}
 				}
 			}
 		})
 	}
 
+	pub fn as_scalar_loc(&self) -> &TypeKindScalarLocation {
+		match &self.kind {
+			TypeKind::Scalar { loc } => loc,
+			_ => unimplemented!()
+		}
+	}
+
 	pub fn get_existing_scalar(name: String) -> Option <Self> {
 		Self::baked().iter().enumerate().find(|(_, ty)| ty.name() == name).map(|(index, _)| Self::from_kind(TypeKind::Scalar {
-			index
+			loc: TypeKindScalarLocation::Global { index }
 		}))
 	}
 
@@ -481,8 +541,8 @@ impl BakedType {
 		}
 	}
 
-	pub fn ordinary(td: TypeDef) -> Self {
-		let name = CString::new(td.name.as_str()).unwrap();
+	pub fn ordinary(td: TypeDef, name: String) -> Self {
+		let name = CString::new(name.as_str()).unwrap();
 		let llvm_type = unsafe { LLVMStructCreateNamed(llvm_context(), name.as_ptr()) };
 
 		Self {
@@ -495,13 +555,6 @@ impl BakedType {
 		match &self.kind {
 			BakedTypeKind::Builtin(builtin) => BUILTIN_TYPES[*builtin].name,
 			BakedTypeKind::Ordinary(ord) => &ord.name
-		}
-	}
-
-	pub fn as_ordinary(&self) -> &TypeDef {
-		match &self.kind {
-			BakedTypeKind::Ordinary(x) => x,
-			_ => unimplemented!()
 		}
 	}
 }

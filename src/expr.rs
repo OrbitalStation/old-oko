@@ -5,9 +5,9 @@ use core::fmt::{Debug, Formatter, Result};
 use std::collections::HashMap;
 use llvm::LLVMIntPredicate;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FunMethodLocation {
-	pub ty_index: TypeDefIndex,
+	pub ty_loc: TypeKindScalarLocation,
 	pub method_index: usize
 }
 
@@ -18,46 +18,19 @@ pub enum FunLocation {
 }
 
 impl FunLocation {
-	pub fn mother_typedef <'a> (&self) -> &'a TypeDef {
+	pub fn mother_typedef(&self) -> &'static mut TypeDef {
 		match self {
-			Self::Method(loc) => match Type::type_list() {
-				TypeList::Baked(baked) => match &baked[loc.ty_index.index].kind {
-					BakedTypeKind::Ordinary(def) => def,
-					_ => unreachable!()
-				},
-				_ => unreachable!()
-			},
+			Self::Method(loc) => loc.ty_loc.type_def().unwrap(),
 			_ => unimplemented!()
 		}
 	}
 
-	pub fn mother_typedef_mut <'a> (&self) -> &'a mut TypeDef {
+	pub fn method <'a> (&self) -> &'a mut AssociatedMethod {
 		match self {
-			Self::Method(loc) => match Type::type_list() {
-				TypeList::Baked(baked) => match &mut baked[loc.ty_index.index].kind {
-					BakedTypeKind::Ordinary(def) => def,
-					_ => unreachable!()
-				},
-				_ => unreachable!()
-			},
+			Self::Method(loc) => &mut self.mother_typedef().methods[loc.method_index],
 			_ => unimplemented!()
 		}
 	}
-
-	pub fn method <'a> (&self) -> &'a AssociatedMethod {
-		match self {
-			Self::Method(loc) => &self.mother_typedef().methods[loc.method_index],
-			_ => unimplemented!()
-		}
-	}
-
-	pub fn method_mut <'a> (&self) -> &'a mut AssociatedMethod {
-		match self {
-			Self::Method(loc) => &mut self.mother_typedef_mut().methods[loc.method_index],
-			_ => unimplemented!()
-		}
-	}
-
 
 	pub fn fun <'a> (&self, stmts: &'a [Stmt]) -> &'a FunDef {
 		match self {
@@ -75,7 +48,7 @@ impl FunLocation {
 				Stmt::FunDef(def) => def,
 				_ => unreachable!()
 			},
-			Self::Method(_) => &mut self.method_mut().def
+			Self::Method(_) => &mut self.method().def
 		}
 	}
 }
@@ -302,7 +275,7 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			}
 		},
 		ExprKindVariableLocation::IInMethod { method } => {
-			let fun: &FunDef = FunLocation::Method(*method).fun(stmts);
+			let fun: &FunDef = FunLocation::Method(method.clone()).fun(stmts);
 			unsafe { LLVMGetParam(fun.llvm_fun.unwrap(), 0) }
 		}
 	}
@@ -456,7 +429,7 @@ impl Expr {
 					=> fun.fun(stmts).vals.get(line_def).unwrap().mutable,
 				ExprKindVariableLocation::AccessField { i, .. } => i.is_lvalue(stmts),
 				ExprKindVariableLocation::IInMethod { method }
-					=> matches!(FunLocation::Method(*method).method().kind, AssociatedMethodKind::ByMutRef | AssociatedMethodKind::ByMutValue)
+					=> matches!(FunLocation::Method(method.clone()).method().kind, AssociatedMethodKind::ByMutRef | AssociatedMethodKind::ByMutValue)
 			},
 			ExprKind::Dereference { may_be_mutable, .. } => *may_be_mutable,
 			_ => false
@@ -498,7 +471,7 @@ impl Expr {
 					}
 				},
 				ExprKindVariableLocation::IInMethod { method }
-					=> &mut FunLocation::Method(*method).method_mut().state_of_i
+					=> &mut FunLocation::Method(method.clone()).method().state_of_i
 			},
 			ExprKind::Dereference { .. } => panic!("cannot move out of a reference"),
 			_ => unreachable!()

@@ -30,7 +30,7 @@ idea Iterator
 
 	* Rust equivalent:
 	* fn next(&mut self) -> &Self::Item;
-	next.$ -> optional Item
+	next.$ -> optional Y.Item
 
 	* Rust equivalent:
 	* fn isExhausted(&self) -> bool;
@@ -64,7 +64,7 @@ impl Filter I P :: Iterator
 	* `.call` is needed here because fields, unlike methods,
 	*   are not eager to be called and aren't instantly called,
 	*   and this `.call` specifies we want it
-	next.$ -> optional Item = loop if i.pred.call (?next i.iter)@elem => break Some elem
+	next.$ -> optional Y.Item = loop if i.pred.call (?next i.iter)@elem => break Some elem
 	
 	isExhausted.& = i.iter.isExhausted
 where
@@ -75,7 +75,7 @@ where
 
 idea Add U
 	ty Return
-	add other: U -> Return
+	add other: U -> Y.Return
 * This means that `U` may not be specified and
 *	would be replaced with `Y`, which is an alias
 *	to the very type that implements the idea

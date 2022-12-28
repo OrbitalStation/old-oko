@@ -1,5 +1,12 @@
 use crate::*;
 
+#[repr(u8)]
+pub(in crate) enum AssociatedItem {
+	Method(AssociatedMethod),
+	/// Don't need to hold any data, everything is added automatically
+	Type
+}
+
 pub(in crate) fn _check2arithmetic(mut x: Expr, mut y: Expr, op: BinOpType, ty: impl for <'a> FnOnce(&'a Expr) -> Type) -> Expr {
 	assert!(x.ty.eq_implicit(&mut y.ty, Some(&mut x.kind), Some(&mut y.kind)), "cannot apply `{:?}` to different types", op);
 	let ty = ty(&x);
@@ -19,21 +26,21 @@ pub(in crate) fn check2arithmetic(x: Expr, y: Expr, op: BinOpType) -> Expr {
 }
 
 pub(in crate) fn check2arithmetic_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
-	_check2arithmetic(x, y, op, |_| Type::get_builtin("bool"))
+	_check2arithmetic(x, y, op, |_| Type::get_by_name("bool"))
 }
 
 pub(in crate) fn check2full_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
-	let bool = Type::get_builtin("bool");
+	let bool = Type::get_by_name("bool");
 	assert_eq!(x.ty, bool, "cannot apply `{:?}` to non-boolean type", op);
 	assert_eq!(y.ty, bool, "cannot apply `{:?}` to non-boolean type", op);
 	_check2arithmetic(x, y, op, |_| bool)
 }
 
 pub(in crate) fn _get_static_method(mother: &Type, name: &str) -> Option <(FunLocation, &'static mut FunDef)> {
-	let (index, method_index, method) = _get_fun_get_idx_and_method(&mother, name)?;
+	let (ty_loc, method_index, method) = _get_fun_get_loc_and_method(&mother, name)?;
 	assert_eq!(method.kind, AssociatedMethodKind::Static);
 	Some((FunLocation::Method(FunMethodLocation {
-		ty_index: TypeDefIndex { index },
+		ty_loc,
 		method_index,
 	}), &mut method.def))
 }
@@ -77,13 +84,13 @@ pub(in crate) fn access_field_inner(mother: Option <Result <Type, Expr>>, input:
 
 	for next in fields {
 		cur = cur.dereference_if_ref_or_nop();
-		if let Some((index, method_index, method)) = _get_fun_get_idx_and_method(&cur.ty, &next) {
+		if let Some((ty_loc, method_index, method)) = _get_fun_get_loc_and_method(&cur.ty, &next) {
 			assert_eq!(method.def.args.len(), 0);
 			let ty = method.def.ret_ty_as_determined(input, Some(method.kind)).clone();
 			cur = Expr {
 				kind: ExprKind::FunCall {
 					fun: FunLocation::Method(FunMethodLocation {
-						ty_index: TypeDefIndex { index },
+						ty_loc,
 						method_index,
 					}),
 					args: vec![cur],
@@ -110,12 +117,10 @@ pub(in crate) fn access_field_inner(mother: Option <Result <Type, Expr>>, input:
 	Some(cur)
 }
 
-pub(in crate) fn _get_fun_get_idx_and_method(ty: &Type, method: &str) -> Option <(usize, usize, &'static mut AssociatedMethod)> {
-	match ty.kind {
-		TypeKind::Scalar { index } => match &mut Type::baked()[index].kind {
-			BakedTypeKind::Ordinary(def) => def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == method)
-				.map(|(a, b)| (index, a, b)),
-			_ => None
+pub(in crate) fn _get_fun_get_loc_and_method(ty: &Type, method: &str) -> Option <(TypeKindScalarLocation, usize, &'static mut AssociatedMethod)> {
+	match &ty.kind {
+		TypeKind::Scalar { loc } => {
+			loc.type_def()?.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == method).map(|(a, b)| (loc.clone(), a, b))
 		},
 		_ => None
 	}
@@ -133,10 +138,10 @@ pub(in crate) fn get_fun(mother: Option <Result <Type, Expr>>, input: ParseFunBo
 				},
 				Err(expr) => {
 					// Non-static method on `(expr)`
-					let (index, method_index, method) = _get_fun_get_idx_and_method(&expr.ty, &components[0])?;
+					let (ty_loc, method_index, method) = _get_fun_get_loc_and_method(&expr.ty, &components[0])?;
 					let len = method.def.args.len();
 					(FunLocation::Method(FunMethodLocation {
-						ty_index: TypeDefIndex { index },
+						ty_loc,
 						method_index,
 					}), &mut method.def, len, Some(expr))
 				}
@@ -150,10 +155,10 @@ pub(in crate) fn get_fun(mother: Option <Result <Type, Expr>>, input: ParseFunBo
 	} else {
 		let fun_name = components.pop().unwrap();
 		let mother_ty = access_field_inner(mother, input, components)?.dereference_if_ref_or_nop();
-		let (index, method_index, method) = _get_fun_get_idx_and_method(&mother_ty.ty, &fun_name)?;
+		let (ty_loc, method_index, method) = _get_fun_get_loc_and_method(&mother_ty.ty, &fun_name)?;
 		let len = method.def.args.len();
 		(FunLocation::Method(FunMethodLocation {
-			ty_index: TypeDefIndex { index },
+			ty_loc,
 			method_index,
 		}), &mut method.def, len, Some(mother_ty))
 	})
