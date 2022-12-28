@@ -56,7 +56,8 @@ pub struct AssociatedMethod {
 pub struct TypeDef {
 	pub name: String,
 	pub kind: TypeDefKind,
-	pub methods: Vec <AssociatedMethod>
+	pub methods: Vec <AssociatedMethod>,
+	pub subtypes: TypeList
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -453,13 +454,13 @@ impl Type {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeList {
 	Raw(Vec <RawType>),
 	Baked(Vec <BakedType>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BakedType {
 	pub kind: BakedTypeKind,
 	pub llvm_type: LLVMTypeRef
@@ -505,13 +506,13 @@ impl BakedType {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BakedTypeKind {
 	Builtin(usize),
 	Ordinary(TypeDef)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RawType {
 	Stub(String),
 	Backed(TypeDef)

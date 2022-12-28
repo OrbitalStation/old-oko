@@ -6,6 +6,7 @@ pub extern crate llvm_sys as llvm;
 macro_rules! modules {
     ($( $name:ident )*) => {$(
 		mod $name;
+		#[allow(unused_imports)]
 		pub use $name::*;
 	)*};
 }
