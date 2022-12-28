@@ -35,6 +35,7 @@ ty Wrapper
 
 	new.* i: &Y = i
 
-	unwrapX.* i: &Y -> i8
-		i := (Y.new i)
-		return i.y.x
+	unwrap.& = i.y.z
+
+	test.* i: &Y = (Y.new i).x
+

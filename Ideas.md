@@ -1,7 +1,5 @@
-* Add `InvisibleTimes` character(⁢) to allow math-like multiplying
+* Add `InvisibleTimes` character(⁢) to allow math-like multiplication
 * Private functions are prefixed with `__`, the rest are public
-* Allow not only `a.b.c` but also `(<any expr>).b.c`, i.e. any expr
-    within brackets
 * Add possibility to use custom macros to define an expression
     when a given type is expected.
     I.e. let's say there's an enum type `AVeryLongEnumName` and we want
@@ -19,8 +17,8 @@
         VariantB => doSmth2
         ...
     ```
-   I.e. no full-path qualifiers. Very cool!
-   It shall also extend further than just enums. You get the point.
+    I.e. no full-path qualifiers. Very cool!
+    It shall also extend further than just enums. You get the point.
 * Add `mutable` attribute for fields of struct that will allow modifying
     them through a shared reference; should be highly unsafe
 * Generics in functions and structs are found in this way:
@@ -42,3 +40,27 @@
     * Hallo, Qyrpyt!
     sayHello receiver="Qyrpyt"
     ```
+* Ability to call functions like so:
+    ```
+    sayHello receiver: String = println "Hallo there, $receiver!"
+  
+    * Hallo there, Her Majesty Gub-Gub!
+    sayHello "Her Majesty Gub-Gub"
+  
+    complexCalculations -> String
+        * Some complex calcs
+        * ...
+        * ...
+        * ...
+        * Finished
+        return "Kirk"
+  
+    * Here, `complexCalculations` will be called only when
+    *   is first used in the `sayHello` function.
+    * The `lazy` function returns special `lazy` type,
+    *   which does the above thing
+    sayHello lazy &complexCalculations
+    ```
+* Types are created by `TypeName.new`, but there should be an
+    attribute that would replace that `new` static method
+    with a `typeName` global function. Would be cool :>

@@ -44,38 +44,72 @@ fn check2full_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
 	_check2arithmetic(x, y, op, |_| bool)
 }
 
-fn access_field_inner(mother: Option <Type>, input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
-	assert!(mother.is_none(), "associated variables are not yet supported");
-	let mut cur: Expr = __expr1_variable(&fields[0], input).expect("unknown variable");
-	for next in fields.iter().skip(1) {
-		cur = cur.dereference_if_ref_or_nop();
-		match &cur.ty.kind {
-			TypeKind::Scalar { index } => match &mut Type::baked()[*index].kind {
-				BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == *next) {
-					Some((idx, method)) => {
-						assert_eq!(method.def.args.len(), 0);
-						let ty = method.def.ret_ty_as_determined(input, Some(method.kind)).clone();
-						cur = Expr {
-							kind: ExprKind::FunCall {
-								fun: FunLocation::Method(FunMethodLocation {
-									ty_index: TypeDefIndex { index: *index },
-									method_index: idx,
-								}),
-								args: vec![cur],
-							},
-							ty,
-						};
-						continue
+fn _get_static_method(mother: &Type, name: &str) -> Option <(FunLocation, &'static mut FunDef)> {
+	let (index, method_index, method) = _get_fun_get_idx_and_method(&mother, name)?;
+	assert_eq!(method.kind, AssociatedMethodKind::Static);
+	Some((FunLocation::Method(FunMethodLocation {
+		ty_index: TypeDefIndex { index },
+		method_index,
+	}), &mut method.def))
+}
+
+fn access_field_inner(mother: Option <Result <Type, Expr>>, input: ParseFunBodyInput, mut fields: Vec <String>) -> Option <Expr> {
+	let mut cur = match mother {
+		Some(mother) => match mother {
+			Ok(mother) => {
+				// Check for static associated items
+				let first = fields.remove(0);
+				// TODO: replace that `expect` with check for static associated variables
+				let (fun, def) = _get_static_method(&mother, &first)?;
+				Expr {
+					kind: ExprKind::FunCall {
+						fun,
+						args: vec![]
 					},
-					_ => ()
-				},
-				_ => ()
+					ty: def.ret_ty_as_determined(input, Some(AssociatedMethodKind::Static)).clone()
+				}
 			},
-			_ => ()
+			Err(mother) => mother
+		},
+		_ => {
+			let first = fields.remove(0);
+			__expr1_variable(&first, input).ok().or_else(|| {
+				let (stmt_index, fun) = input.fun_by_name_mut(&first)?;
+				if !fun.args.is_empty() {
+					return None
+				}
+				let ty = fun.ret_ty_as_determined(input, None).clone();
+				Some(Expr {
+					kind: ExprKind::FunCall {
+						fun: FunLocation::Global { stmt_index },
+						args: vec![],
+					},
+					ty,
+				})
+			})?
+		}
+	};
+
+	for next in fields {
+		cur = cur.dereference_if_ref_or_nop();
+		if let Some((index, method_index, method)) = _get_fun_get_idx_and_method(&cur.ty, &next) {
+			assert_eq!(method.def.args.len(), 0);
+			let ty = method.def.ret_ty_as_determined(input, Some(method.kind)).clone();
+			cur = Expr {
+				kind: ExprKind::FunCall {
+					fun: FunLocation::Method(FunMethodLocation {
+						ty_index: TypeDefIndex { index },
+						method_index,
+					}),
+					args: vec![cur],
+				},
+				ty,
+			};
+			continue
 		}
 
 		let fields = cur.ty.get_fields_of_struct().expect("cannot access a field of not-a-structure");
-		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == *next).expect("no field with such a name found");
+		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == next).expect("no field with such a name found");
 		cur = Expr {
 			kind: ExprKind::Variable {
 				location: ExprKindVariableLocation::AccessField {
@@ -87,53 +121,56 @@ fn access_field_inner(mother: Option <Type>, input: ParseFunBodyInput, fields: V
 			ty: field.ty.clone()
 		}
 	}
-	cur
+
+	Some(cur)
 }
 
-fn get_fun(mother: Option <Type>, input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &mut FunDef, usize, Option <Expr>)> {
+fn _get_fun_get_idx_and_method(ty: &Type, method: &str) -> Option <(usize, usize, &'static mut AssociatedMethod)> {
+	match ty.kind {
+		TypeKind::Scalar { index } => match &mut Type::baked()[index].kind {
+			BakedTypeKind::Ordinary(def) => def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == method)
+				.map(|(a, b)| (index, a, b)),
+			_ => None
+		},
+		_ => None
+	}
+}
+
+fn get_fun(mother: Option <Result <Type, Expr>>, input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &mut FunDef, usize, Option <Expr>)> {
 	Some(if components.len() == 1 {
 		if let Some(mother) = mother {
-			match mother.kind {
-				TypeKind::Scalar { index } => match &mut Type::baked()[index].kind {
-					BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == components[0]) {
-						Some((idx, method)) => {
-							let len = method.def.args.len();
-							assert_eq!(method.kind, AssociatedMethodKind::Static);
-							(FunLocation::Method(FunMethodLocation {
-								ty_index: TypeDefIndex { index },
-								method_index: idx,
-							}), &mut method.def, len, None)
-						},
-						None => return None
-					},
-					_ => return None
+			match mother {
+				Ok(mother) => {
+					// Static method
+					let (loc, method) = _get_static_method(&mother, &components[0])?;
+					let len = method.args.len();
+					(loc, method, len, None)
 				},
-				_ => return None
+				Err(expr) => {
+					// Non-static method on `(expr)`
+					let (index, method_index, method) = _get_fun_get_idx_and_method(&expr.ty, &components[0])?;
+					let len = method.def.args.len();
+					(FunLocation::Method(FunMethodLocation {
+						ty_index: TypeDefIndex { index },
+						method_index,
+					}), &mut method.def, len, Some(expr))
+				}
 			}
 		} else {
+			// Global function
 			let (i, d) = input.fun_by_name_mut(&components[0])?;
 			let len = d.args.len();
 			(FunLocation::Global { stmt_index: i }, d, len, None)
 		}
 	} else {
 		let fun_name = components.pop().unwrap();
-		let mother_ty = access_field_inner(mother, input, components).dereference_if_ref_or_nop();
-		match mother_ty.ty.kind {
-			TypeKind::Scalar { index } => match &mut Type::baked()[index].kind {
-				BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == fun_name) {
-					Some((idx, method)) => {
-						let len = method.def.args.len();
-						(FunLocation::Method(FunMethodLocation {
-							ty_index: TypeDefIndex { index },
-							method_index: idx,
-						}), &mut method.def, len, Some(mother_ty))
-					},
-					None => return None
-				},
-				BakedTypeKind::Builtin(_) => return None
-			},
-			_ => return None
-		}
+		let mother_ty = access_field_inner(mother, input, components)?.dereference_if_ref_or_nop();
+		let (index, method_index, method) = _get_fun_get_idx_and_method(&mother_ty.ty, &fun_name)?;
+		let len = method.def.args.len();
+		(FunLocation::Method(FunMethodLocation {
+			ty_index: TypeDefIndex { index },
+			method_index,
+		}), &mut method.def, len, Some(mother_ty))
 	})
 }
 
@@ -388,11 +425,12 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule __expr1_fun_call_helper_types(input: ParseFunBodyInput) -> Type
-		= ty:existing_ty(input.mother_ty()) _ "." _ { ty }
+	rule __expr1_associated_item_prefix(input: ParseFunBodyInput) -> Result <Type, Expr>
+		= ty:existing_ty(input.mother_ty()) _ "." _ { Ok(ty) }
+		/ "(" _ x:expr(input) _ ")" _ "." _ { Err(x) }
 
 	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> (FunLocation, &'a mut FunDef, usize, Option <Expr>)
-		= ty:__expr1_fun_call_helper_types(input)? names:ident() ++ (_ "." _)
+		= ty:__expr1_associated_item_prefix(input)? names:ident() ++ (_ "." _)
 	{? get_fun(ty, input, names).ok_or("function call") }
 
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
@@ -528,7 +566,7 @@ peg::parser! { grammar okolang() for str {
 		= "" { fields }
 
 	rule __expr1_access(input: ParseFunBodyInput) -> Expr
-		= fields:ident() ** <2,> (_ "." _) e:__expr1_access_inner(access_field_inner(None, input, fields))
+		= prefix:__expr1_associated_item_prefix(input)? fields:ident() ++ (_ "." _) e:__expr1_access_inner(open_option_in_arg!(access_field_inner(prefix, input, fields)))
 	{ e }
 
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
@@ -584,7 +622,7 @@ peg::parser! { grammar okolang() for str {
 		match &mut fun.ret_ty {
 			FunRetType::Determined(ret) => if expr.ty != *ret {
 				if !expr.ty.try_implicitly_convert(ret, Some(&mut expr.kind)) {
-					panic!("return type mismatch in function `{}`", fun.name)
+					panic!("return type mismatch in function `{}` with types `{:?}` and `{:?}`", fun.name, ret, expr.ty)
 				}
 			},
 			ret@FunRetType::Undetermined => {
