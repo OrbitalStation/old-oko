@@ -44,11 +44,11 @@ fn check2full_bool(x: Expr, y: Expr, op: BinOpType) -> Expr {
 	_check2arithmetic(x, y, op, |_| bool)
 }
 
-fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
+fn access_field_inner(mother: Option <Type>, input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
+	assert!(mother.is_none(), "associated variables are not yet supported");
 	let mut cur: Expr = __expr1_variable(&fields[0], input).expect("unknown variable");
 	for next in fields.iter().skip(1) {
 		cur = cur.dereference_if_ref_or_nop();
-		// TODO: add possibility to use property-like methods here
 		match &cur.ty.kind {
 			TypeKind::Scalar { index } => match &mut Type::baked()[*index].kind {
 				BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == *next) {
@@ -90,14 +90,34 @@ fn access_field_inner(input: ParseFunBodyInput, fields: Vec <String>) -> Expr {
 	cur
 }
 
-fn get_fun(input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &mut FunDef, usize, Option <Expr>)> {
+fn get_fun(mother: Option <Type>, input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &mut FunDef, usize, Option <Expr>)> {
 	Some(if components.len() == 1 {
-		let (i, d) = input.fun_by_name_mut(&components[0])?;
-		let len = d.args.len();
-		(FunLocation::Global { stmt_index: i }, d, len, None)
+		if let Some(mother) = mother {
+			match mother.kind {
+				TypeKind::Scalar { index } => match &mut Type::baked()[index].kind {
+					BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == components[0]) {
+						Some((idx, method)) => {
+							let len = method.def.args.len();
+							assert_eq!(method.kind, AssociatedMethodKind::Static);
+							(FunLocation::Method(FunMethodLocation {
+								ty_index: TypeDefIndex { index },
+								method_index: idx,
+							}), &mut method.def, len, None)
+						},
+						None => return None
+					},
+					_ => return None
+				},
+				_ => return None
+			}
+		} else {
+			let (i, d) = input.fun_by_name_mut(&components[0])?;
+			let len = d.args.len();
+			(FunLocation::Global { stmt_index: i }, d, len, None)
+		}
 	} else {
 		let fun_name = components.pop().unwrap();
-		let mother_ty = access_field_inner(input, components).dereference_if_ref_or_nop();
+		let mother_ty = access_field_inner(mother, input, components).dereference_if_ref_or_nop();
 		match mother_ty.ty.kind {
 			TypeKind::Scalar { index } => match &mut Type::baked()[index].kind {
 				BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == fun_name) {
@@ -181,15 +201,22 @@ peg::parser! { grammar okolang() for str {
 		= "&" { false }
 		/ "$" { true }
 
-	rule __non_ptr_ty() -> Type
-		= name:ident() { Type::meet_new_raw_scalar(name, None) }
-		/ "[" _ ty:ty() __ "x" __ num:$(digit()+) _ "]" { Type::meet_new_array(ty, num) }
-		/ "(" _ types:(ty() ** (_ "," _)) _ ")" { Type::from_kind(TypeKind::Tuple { types }) }
-		/ mutable:__ty_mut_ref() _ ty:ty() { Type::meet_new_reference(ty, mutable) }
+	rule __non_ptr_ty(existing: bool) -> Type
+		= name:ident() {? if existing { Type::get_existing_scalar(name).ok_or("type") } else { Ok(Type::meet_new_raw_scalar(name, None)) } }
+		/ "[" _ ty:__ty(existing) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
+		/ "(" _ ty:__ty(existing) _ ")" { ty }
+		/ "(" _ types:(__ty(existing) ** (_ "," _)) _ ("," _)? ")" { Type::from_kind(TypeKind::Tuple { types }) }
+		/ mutable:__ty_mut_ref() _ ty:__ty(existing) { Type::reference(ty, mutable) }
+
+	rule __ty(existing: bool) -> Type
+		= ptrs:$(['*' | '^']+) ty:__non_ptr_ty(existing) { Type::pointer(ty, ptrs) }
+		/ ty:__non_ptr_ty(existing) { ty }
 
 	rule ty() -> Type
-		= ptrs:$(['*' | '^']+) ty:__non_ptr_ty() { Type::meet_new_pointer(ty, ptrs) }
-		/ ty:__non_ptr_ty() { ty }
+		= x:__ty(false) { x }
+
+	rule existing_ty() -> Type
+		= x:__ty(true) { x }
 
 	rule typedef_assoc_items_raw() -> String
 		= line:complex_body_line_with_nl()* { line.join("\n") }
@@ -312,17 +339,22 @@ peg::parser! { grammar okolang() for str {
 			}
 		} else if name == "i" {
 			if let FunLocation::Method(method) = &input.fun_loc {
-				Expr {
-					kind: ExprKind::Variable {
-						location: ExprKindVariableLocation::IInMethod {
-							method: *method
-						}
-					},
-					ty: FunLocation::Method(*method).method().kind.modify_type(Type {
-						kind: TypeKind::Scalar {
-							index: method.ty_index.index
-						}
-					})
+				let kind = FunLocation::Method(*method).method().kind;
+				if kind != AssociatedMethodKind::Static {
+					Expr {
+						kind: ExprKind::Variable {
+							location: ExprKindVariableLocation::IInMethod {
+								method: *method
+							}
+						},
+						ty: kind.modify_type(Type {
+							kind: TypeKind::Scalar {
+								index: method.ty_index.index
+							}
+						})
+					}
+				} else {
+					return Err("expression")
 				}
 			} else {
 				return Err("expression")
@@ -344,9 +376,12 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
+	rule __expr1_fun_call_helper_types() -> Type
+		= ty:existing_ty() _ "." _ { ty }
+
 	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> (FunLocation, &'a mut FunDef, usize, Option <Expr>)
-		= names:ident() ++ (_ "." _)
-	{? get_fun(input, names).ok_or("function call") }
+		= ty:__expr1_fun_call_helper_types()? names:ident() ++ (_ "." _)
+	{? get_fun(ty, input, names).ok_or("function call") }
 
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
 		= i:__expr1_fun_call_helper(input) args:__expr1_fun_call_argument(input, i.2)?
@@ -485,7 +520,7 @@ peg::parser! { grammar okolang() for str {
 		= "" { fields }
 
 	rule __expr1_access(input: ParseFunBodyInput) -> Expr
-		= fields:ident() ** <2,> (_ "." _) e:__expr1_access_inner(access_field_inner(input, fields))
+		= fields:ident() ** <2,> (_ "." _) e:__expr1_access_inner(access_field_inner(None, input, fields))
 	{ e }
 
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {
@@ -627,13 +662,14 @@ peg::parser! { grammar okolang() for str {
 		/ body:fundef_body() { Some(body) }
 
 	rule __fun_method_type() -> AssociatedMethodKind
-		= _ "." x:$("$!" / "&" / "$" / "!")
+		= _ "." x:$("$!" / "&" / "$" / "!" / "*")
 	{
 		match x {
 			"&" => AssociatedMethodKind::ByRef,
 			"$" => AssociatedMethodKind::ByMutRef,
 			"!" => AssociatedMethodKind::ByValue,
 			"$!" => AssociatedMethodKind::ByMutValue,
+			"*" => AssociatedMethodKind::Static,
 			_ => unreachable!()
 		}
 	}

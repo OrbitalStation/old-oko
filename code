@@ -35,4 +35,8 @@ ty Wrapper
 
 	unwrapX.! = i
 
-unwrapX i: &Wrapper = i.unwrapX.unwrapX.x
+	new.* i: &Wrapper = i
+
+unwrapX i: &Wrapper -> i8
+	i := (Wrapper.new i)
+	return i.y.x

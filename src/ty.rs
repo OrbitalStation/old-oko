@@ -17,7 +17,10 @@ pub enum AssociatedMethodKind {
 	ByValue,
 
 	/// Rust's `mut self`
-	ByMutValue
+	ByMutValue,
+
+	/// No `self`
+	Static
 }
 
 impl AssociatedMethodKind {
@@ -36,7 +39,8 @@ impl AssociatedMethodKind {
 					mutable: self == Self::ByMutRef
 				}
 			},
-			Self::ByValue | Self::ByMutValue => ty
+			Self::ByValue | Self::ByMutValue => ty,
+			Self::Static => unreachable!()
 		}
 	}
 }
@@ -415,21 +419,27 @@ impl Type {
 		})
 	}
 
-	pub fn meet_new_pointer(ty: Self, ptrs: &str) -> Self {
+	pub fn get_existing_scalar(name: String) -> Option <Self> {
+		Self::baked().iter().enumerate().find(|(_, ty)| ty.name() == name).map(|(index, _)| Self::from_kind(TypeKind::Scalar {
+			index
+		}))
+	}
+
+	pub fn pointer(ty: Self, ptrs: &str) -> Self {
 		Self::from_kind(TypeKind::Pointer {
 			ty: Box::new(ty),
 			ptrs: TypePointers::from(ptrs),
 		})
 	}
 
-	pub fn meet_new_array(ty: Self, size: &str) -> Self {
+	pub fn array(ty: Self, size: &str) -> Self {
 		Self::from_kind(TypeKind::Array {
 			ty: Box::new(ty),
 			size: size.parse().unwrap(),
 		})
 	}
 
-	pub fn meet_new_reference(ty: Self, mutable: bool) -> Self {
+	pub fn reference(ty: Self, mutable: bool) -> Self {
 		Self::from_kind(TypeKind::Reference {
 			ty: Box::new(ty),
 			mutable

@@ -53,12 +53,15 @@ ty Filter
 ```
 ty Wrapper = x: i32
     unwrap.& = i.x
+    
+    new.* = ...
 ```
 
 * `.&` - a reference to the type
 * `.$` - a mutable reference
 * `.!` - a moved value of the type
 * `.$!` - a mutable moved value
+* `.*` - a static method
 
 ## Function definition
 
@@ -85,6 +88,7 @@ drop x: T
 * `TypeName` -> a type of that name
 * `*T` -> a constant pointer to `T`
 * `^T` -> a mutable pointer to `T`
+* `(T)` -> the same as `T`
 * `(X, Y, Z, ...)` -> a tuple of types
 * `[T x 14]` -> an array of types
 * `&T` -> a reference to `T`

@@ -13,9 +13,7 @@ pub struct FunMethodLocation {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum FunLocation {
-	Global {
-		stmt_index: usize
-	},
+	Global { stmt_index: usize },
 	Method(FunMethodLocation)
 }
 

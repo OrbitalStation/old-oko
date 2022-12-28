@@ -55,11 +55,13 @@ pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: O
         fun_stmts
     };
 
-    let mut args = fun.args.iter().map(|x| x.llvm_type()).collect ::<Vec <_>>();
+    let mut args = fun.args.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
     let ret_ty = fun.ret_ty.as_determined();
 
     fun.llvm_fun = Some(if let Some((ty_name, ty_llvm, kind)) = method_info {
-        args.insert(0, kind.modify_llvm_type(ty_llvm));
+        if kind != AssociatedMethodKind::Static {
+            args.insert(0, kind.modify_llvm_type(ty_llvm));
+        }
         create_llvm_fun(&format!("{ty_name}.{}", fun.name), args, ret_ty)
     } else {
         create_llvm_fun(&fun.name, args, ret_ty)
