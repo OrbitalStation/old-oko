@@ -2,6 +2,7 @@ use crate::*;
 
 pub struct ParseFunBodyInputStruct {
 	pub fun_loc: FunLocation,
+	pub(in crate) mother_ty: Option <Type>,
 	line: *mut usize,
 	stmts: *mut [Stmt]
 }
@@ -10,9 +11,14 @@ impl ParseFunBodyInputStruct {
 	pub fn new(stmts: &mut [Stmt], line: &mut usize) -> Self {
 		Self {
 			fun_loc: FunLocation::Global { stmt_index: 0 },
+			mother_ty: None,
 			line: line as *mut usize,
 			stmts: stmts as *mut [Stmt]
 		}
+	}
+
+	pub fn mother_ty(&self) -> Option <&Type> {
+		self.mother_ty.as_ref()
 	}
 
 	pub fn cur(&self) -> &Stmt {
@@ -87,6 +93,7 @@ impl Iterator for ParseFunBodyInputStruct {
 				*stmt_index += 1;
 				Some(Self {
 					fun_loc: FunLocation::Global { stmt_index: *stmt_index - 1 },
+					mother_ty: self.mother_ty.clone(),
 					line: self.line,
 					stmts: unsafe { core::mem::transmute(&mut *self.stmts) }
 				})

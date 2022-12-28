@@ -85,6 +85,7 @@ drop x: T
 
 ## Types
 
+* `Y` -> Rust's `Self`
 * `TypeName` -> a type of that name
 * `*T` -> a constant pointer to `T`
 * `^T` -> a mutable pointer to `T`

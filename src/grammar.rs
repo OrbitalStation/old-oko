@@ -54,7 +54,7 @@ fn access_field_inner(mother: Option <Type>, input: ParseFunBodyInput, fields: V
 				BakedTypeKind::Ordinary(def) => match def.methods.iter_mut().enumerate().find(|(_, x)| x.def.name == *next) {
 					Some((idx, method)) => {
 						assert_eq!(method.def.args.len(), 0);
-						let ty = method.def.ret_ty_as_determined(input, Some((cur.ty.name(), cur.ty.llvm_type(), method.kind))).clone();
+						let ty = method.def.ret_ty_as_determined(input, Some(method.kind)).clone();
 						cur = Expr {
 							kind: ExprKind::FunCall {
 								fun: FunLocation::Method(FunMethodLocation {
@@ -194,35 +194,39 @@ peg::parser! { grammar okolang() for str {
 
 	rule digit() -> char = c:['0'..='9'] { c }
 
+	rule __ident_continuation() -> char
+		= x:(letter() / digit()) { x }
+
 	rule ident() -> String
-		= ident:$(letter() (letter() / digit())*) { ident.to_string() }
+		= ident:$(letter() __ident_continuation()*) { ident.to_string() }
 
 	rule __ty_mut_ref() -> bool
 		= "&" { false }
 		/ "$" { true }
 
-	rule __non_ptr_ty(existing: bool) -> Type
-		= name:ident() {? if existing { Type::get_existing_scalar(name).ok_or("type") } else { Ok(Type::meet_new_raw_scalar(name, None)) } }
-		/ "[" _ ty:__ty(existing) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
-		/ "(" _ ty:__ty(existing) _ ")" { ty }
-		/ "(" _ types:(__ty(existing) ** (_ "," _)) _ ("," _)? ")" { Type::from_kind(TypeKind::Tuple { types }) }
-		/ mutable:__ty_mut_ref() _ ty:__ty(existing) { Type::reference(ty, mutable) }
+	rule __non_ptr_ty(existing: bool, mother_ty: Option <&Type>) -> Type
+		= "Y" !__ident_continuation() {? Ok(mother_ty.ok_or("type")?.clone()) }
+		/ name:ident() {? if existing { Type::get_existing_scalar(name).ok_or("type") } else { Ok(Type::meet_new_raw_scalar(name, None)) } }
+		/ "[" _ ty:__ty(existing, mother_ty) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
+		/ "(" _ ty:__ty(existing, mother_ty) _ ")" { ty }
+		/ "(" _ types:(__ty(existing, mother_ty) ** (_ "," _)) _ ("," _)? ")" { Type::from_kind(TypeKind::Tuple { types }) }
+		/ mutable:__ty_mut_ref() _ ty:__ty(existing, mother_ty) { Type::reference(ty, mutable) }
 
-	rule __ty(existing: bool) -> Type
-		= ptrs:$(['*' | '^']+) ty:__non_ptr_ty(existing) { Type::pointer(ty, ptrs) }
-		/ ty:__non_ptr_ty(existing) { ty }
+	rule __ty(existing: bool, mother_ty: Option <&Type>) -> Type
+		= ptrs:$(['*' | '^']+) ty:__non_ptr_ty(existing, mother_ty) { Type::pointer(ty, ptrs) }
+		/ ty:__non_ptr_ty(existing, mother_ty) { ty }
 
-	rule ty() -> Type
-		= x:__ty(false) { x }
+	rule ty(mother_ty: Option <&Type>) -> Type
+		= x:__ty(false, mother_ty) { x }
 
-	rule existing_ty() -> Type
-		= x:__ty(true) { x }
+	rule existing_ty(mother_ty: Option <&Type>) -> Type
+		= x:__ty(true, mother_ty) { x }
 
 	rule typedef_assoc_items_raw() -> String
 		= line:complex_body_line_with_nl()* { line.join("\n") }
 
 	rule typedef_assoc_item(mother_ty: &Type) -> AssociatedMethod
-		= fun:fun_or_extern_fun_definition(true)
+		= fun:fun_or_extern_fun_definition(Some(mother_ty))
 	{
 		AssociatedMethod {
 			def: match fun.0 {
@@ -237,21 +241,29 @@ peg::parser! { grammar okolang() for str {
 	pub(in crate) rule typedef_assoc_items(mother_ty: &Type) -> Vec <AssociatedMethod>
 		= items:typedef_assoc_item(mother_ty)* nl()? { items }
 
-	rule type_definition() -> TypeDefIndex
-		= "ty" __ name:ident() kind:type_definition_body() assoc_items:typedef_assoc_items_raw()
+	rule __type_definition_add() -> Type
+		= name:ident()
 	{
-		let ty = Type::meet_new_raw_scalar(name.clone(), Some(TypeDef {
+		Type::meet_new_raw_scalar(name.clone(), Some(TypeDef {
 			name,
-			kind,
+			// Will be replaced
+			kind: TypeDefKind::Opaque,
 			methods: vec![]
-		}));
+		}))
+	}
 
+	rule type_definition() -> TypeDefIndex
+		= "ty" __ ty:__type_definition_add() kind:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
+	{
 		let index = ty.as_scalar_index();
 
 		let items = typedef_assoc_items(&(assoc_items + "\n"), &ty).unwrap();
 
 		match &mut Type::raw()[index] {
-			RawType::Backed(typedef) => typedef.methods = items,
+			RawType::Backed(typedef) => {
+				typedef.methods = items;
+				typedef.kind = kind;
+			},
 			_ => unreachable!()
 		}
 
@@ -260,19 +272,19 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule type_definition_body() -> TypeDefKind = kind:(
+	rule type_definition_body(mother_ty: &Type) -> TypeDefKind = kind:(
 		typedef_opaque()
-		/ typedef_inline_struct()
-		/ typedef_inline_enum()
-		/ typedef_wide_enum()
-		/ typedef_wide_struct()
+		/ typedef_inline_struct(mother_ty)
+		/ typedef_inline_enum(mother_ty)
+		/ typedef_wide_enum(mother_ty)
+		/ typedef_wide_struct(mother_ty)
 	) { kind }
 
 	rule typedef_opaque() -> TypeDefKind
 		= _ "=" _ "opaque" nl() { TypeDefKind::Opaque }
 
-	rule typedef_struct_field() -> TypedefStructFieldRuleReturn
-		= names:ident() ++ __ _ ":" _ ty:ty()
+	rule typedef_struct_field(mother_ty: &Type) -> TypedefStructFieldRuleReturn
+		= names:ident() ++ __ _ ":" _ ty:ty(Some(mother_ty))
 	{
 		names.into_iter().map(move |name| StructField {
 			name,
@@ -280,37 +292,37 @@ peg::parser! { grammar okolang() for str {
 		})
 	}
 
-	rule typedef_inline_struct() -> TypeDefKind = _ "=" _ fields:(typedef_struct_field() ++ (_ "+" _)) nl() {
+	rule typedef_inline_struct(mother_ty: &Type) -> TypeDefKind = _ "=" _ fields:(typedef_struct_field(mother_ty) ++ (_ "+" _)) nl() {
 		TypeDefKind::Struct {
 			fields: fields.into_iter().flatten().collect()
 		}
 	}
 
-	rule typedef_wide_struct_field() -> TypedefStructFieldRuleReturn
-		= "\t" v:typedef_struct_field() nl()
+	rule typedef_wide_struct_field(mother_ty: &Type) -> TypedefStructFieldRuleReturn
+		= "\t" v:typedef_struct_field(mother_ty) nl()
 	{ v }
 
-	rule typedef_wide_struct() -> TypeDefKind = nl() fields:typedef_wide_struct_field()+ {
+	rule typedef_wide_struct(mother_ty: &Type) -> TypeDefKind = nl() fields:typedef_wide_struct_field(mother_ty)+ {
 		TypeDefKind::Struct {
 			fields: fields.into_iter().flatten().collect()
 		}
 	}
 
-	rule typedef_enum_variant() -> EnumVariant
-		= name:ident() _ data:ty() ** __
+	rule typedef_enum_variant(mother_ty: &Type) -> EnumVariant
+		= name:ident() _ data:ty(Some(mother_ty)) ** __
 	{ EnumVariant { name, data } }
 
-	rule typedef_inline_enum() -> TypeDefKind = _ "=" _ variants:(typedef_enum_variant() ++ (_ "|" _)) nl() {
+	rule typedef_inline_enum(mother_ty: &Type) -> TypeDefKind = _ "=" _ variants:(typedef_enum_variant(mother_ty) ++ (_ "|" _)) nl() {
 		TypeDefKind::Enum {
 			variants
 		}
 	}
 
-	rule typedef_wide_enum_variant() -> EnumVariant
-		= "\t" v:typedef_enum_variant() nl()
+	rule typedef_wide_enum_variant(mother_ty: &Type) -> EnumVariant
+		= "\t" v:typedef_enum_variant(mother_ty) nl()
 	{ v }
 
-	rule typedef_wide_enum() -> TypeDefKind = nl() variants:typedef_wide_enum_variant()+ {
+	rule typedef_wide_enum(mother_ty: &Type) -> TypeDefKind = nl() variants:typedef_wide_enum_variant(mother_ty)+ {
 		TypeDefKind::Enum {
 			variants
 		}
@@ -376,11 +388,11 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule __expr1_fun_call_helper_types() -> Type
-		= ty:existing_ty() _ "." _ { ty }
+	rule __expr1_fun_call_helper_types(input: ParseFunBodyInput) -> Type
+		= ty:existing_ty(input.mother_ty()) _ "." _ { ty }
 
 	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> (FunLocation, &'a mut FunDef, usize, Option <Expr>)
-		= ty:__expr1_fun_call_helper_types()? names:ident() ++ (_ "." _)
+		= ty:__expr1_fun_call_helper_types(input)? names:ident() ++ (_ "." _)
 	{? get_fun(ty, input, names).ok_or("function call") }
 
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
@@ -397,13 +409,9 @@ peg::parser! { grammar okolang() for str {
 			arg.mark_as_moved_and_panic_if_already(input)
 		}
 
-		let mut buf;
-
 		let method_info = if let Some(i) = i_of_method {
-			let llvm = i.ty.llvm_type();
-			buf = i.ty.name().to_string();
 			args.insert(0, i);
-			Some((buf.as_str(), llvm, fun_loc.method().kind))
+			Some(fun_loc.method().kind)
 		} else {
 			None
 		};
@@ -624,8 +632,8 @@ peg::parser! { grammar okolang() for str {
 		(FunStmt::Expr(expr), ty)
 	}
 
-	rule fundef_arg() -> FunDefArgRuleReturn
-		= names:ident() ++ __ _ ":" _ ty:ty()
+	rule fundef_arg(mother_ty: Option <&Type>) -> FunDefArgRuleReturn
+		= names:ident() ++ __ _ ":" _ ty:ty(mother_ty)
 	{
 		names.into_iter().map(move |name| FunArg {
 			name,
@@ -634,8 +642,8 @@ peg::parser! { grammar okolang() for str {
 		})
 	}
 
-	rule fundef_args() -> Vec <FunArg>
-		= args:fundef_arg() ** (_ "," _)
+	rule fundef_args(mother_ty: Option <&Type>) -> Vec <FunArg>
+		= args:fundef_arg(mother_ty) ** (_ "," _)
 	{ args.into_iter().flatten().collect() }
 
 	rule complex_body_line() -> String
@@ -654,10 +662,10 @@ peg::parser! { grammar okolang() for str {
 		(false, code.join("\n") + "\n")
 	}
 
-	rule __fun_ret_ty() -> Type
-		= _ "->" _ ty:ty() { ty }
+	rule __fun_ret_ty(mother_ty: Option <&Type>) -> Type
+		= _ "->" _ ty:ty(mother_ty) { ty }
 
-	rule __fun_or_extern_fun_definition_cont(a: bool) -> Option <(bool, String)>
+	rule __fun_or_extern_fun_definition_cont() -> Option <(bool, String)>
 		= _ "=" _ "extern" nl() { None }
 		/ body:fundef_body() { Some(body) }
 
@@ -674,9 +682,11 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
-	rule fun_or_extern_fun_definition(is_a_method: bool) -> (Stmt, Option <AssociatedMethodKind>)
-		= name:ident() method_type:__fun_method_type()? _ args:fundef_args() ret_ty:__fun_ret_ty()? body:__fun_or_extern_fun_definition_cont(is_a_method)
+	rule fun_or_extern_fun_definition(mother_ty: Option <&Type>) -> (Stmt, Option <AssociatedMethodKind>)
+		= name:ident() method_type:__fun_method_type()? _ args:fundef_args(mother_ty) ret_ty:__fun_ret_ty(mother_ty)? body:__fun_or_extern_fun_definition_cont()
 	{
+		let is_a_method = mother_ty.is_some();
+
 		match body {
 			None => {
 				assert!(method_type.is_none() && !is_a_method, "cannot have an extern fun `{name}` as an associated method");
@@ -716,7 +726,7 @@ peg::parser! { grammar okolang() for str {
 
 	rule stmt() -> Stmt
 		= x:type_definition() { Stmt::TypeDef(x) }
-		/ x:fun_or_extern_fun_definition(false) { x.0 }
+		/ x:fun_or_extern_fun_definition(None) { x.0 }
 
 	rule __global_whitespace() = quiet!{[' ' | '\n' | '\t']*}
 

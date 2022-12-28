@@ -1,4 +1,3 @@
-use llvm::prelude::*;
 use crate::*;
 
 pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
@@ -6,12 +5,13 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
     let mut input = ParseFunBodyInputStruct::new(stmts, &mut line);
     for (ty_idx, ty) in Type::baked().iter_mut().enumerate() {
         if let BakedTypeKind::Ordinary(def) = unsafe { &mut *(&mut ty.kind as *mut BakedTypeKind) } {
+            input.mother_ty = Some(Type::from_kind(TypeKind::Scalar { index: ty_idx }));
             for (method_index, method) in def.methods.iter_mut().enumerate() {
                 input.fun_loc = FunLocation::Method(FunMethodLocation {
                     ty_index: TypeDefIndex { index: ty_idx },
                     method_index
                 });
-                parse_fun_body(&mut method.def, &input, Some((ty.name(), ty.llvm_type, method.kind)))
+                parse_fun_body(&mut method.def, &input, Some(method.kind))
             }
         }
     }
@@ -29,7 +29,7 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
     }
 }
 
-pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: Option <(&str, LLVMTypeRef, AssociatedMethodKind)>) {
+pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: Option <AssociatedMethodKind>) {
     let code = match &mut fun.body {
         FunBody::Raw { code } => code,
         // Already parsed; ignore
@@ -58,11 +58,12 @@ pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: O
     let mut args = fun.args.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
     let ret_ty = fun.ret_ty.as_determined();
 
-    fun.llvm_fun = Some(if let Some((ty_name, ty_llvm, kind)) = method_info {
+    fun.llvm_fun = Some(if let Some(kind) = method_info {
+        let ty = input.mother_ty().unwrap();
         if kind != AssociatedMethodKind::Static {
-            args.insert(0, kind.modify_llvm_type(ty_llvm));
+            args.insert(0, kind.modify_llvm_type(ty.llvm_type()));
         }
-        create_llvm_fun(&format!("{ty_name}.{}", fun.name), args, ret_ty)
+        create_llvm_fun(&format!("{}.{}", ty.name(), fun.name), args, ret_ty)
     } else {
         create_llvm_fun(&fun.name, args, ret_ty)
     });
