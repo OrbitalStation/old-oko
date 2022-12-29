@@ -142,6 +142,13 @@ pub struct Type {
 
 impl PartialEq for Type {
 	fn eq(&self, other: &Self) -> bool {
+		match &self.kind {
+			TypeKind::Scalar { loc } => match &other.kind {
+				TypeKind::Scalar { loc: loc2 } => return loc.name() == loc2.name(),
+				_ => ()
+			},
+			_ => ()
+		}
 		self.kind.eq(&other.kind)
 	}
 }
@@ -169,6 +176,7 @@ impl TypeKindScalarLocation {
 		match list {
 			TypeList::Baked(baked) => match &mut baked[index].kind {
 				BakedTypeKind::Ordinary(def) => Some(def),
+				BakedTypeKind::Alias(alias) => return alias.type_def(),
 				_ => None
 			},
 			TypeList::Raw(raw) => match &mut raw[index] {
@@ -206,7 +214,7 @@ impl TypeKindScalarLocation {
 				TypeList::Baked(baked) => baked[*index].name().to_string()
 			},
 			Self::AssociatedItem { index, mother } => format!("{}.{}", mother.name(), match &mother.type_def().unwrap().subtypes {
-				TypeList::Baked(baked) => baked[*index].name(),
+				TypeList::Baked(baked) => baked[*index].name().to_string(),
 				TypeList::Raw(raw) => raw[*index].name()
 			})
 		}
@@ -296,6 +304,27 @@ impl Type {
 				})
 			},
 			_ => unimplemented!()
+		}
+	}
+
+	pub fn get_baked_seq_type(start_idx: Self, cont: Vec <String>) -> Option <Self> {
+		match start_idx.kind {
+			TypeKind::Scalar { mut loc } => {
+				for part in cont {
+					match &loc.type_def()?.subtypes {
+						TypeList::Baked(baked) => loc = TypeKindScalarLocation::AssociatedItem {
+							index: baked.iter().enumerate().find(|(_, x) | match &x.kind {
+								BakedTypeKind::Ordinary(ord) => *ord.name == part,
+								_ => unreachable!()
+							})?.0,
+							mother: Box::new(loc),
+						},
+						_ => return None
+					}
+				}
+				Some(Self::from_kind(TypeKind::Scalar { loc }))
+			},
+			_ => None
 		}
 	}
 
@@ -507,6 +536,24 @@ impl Type {
 		})
 	}
 
+	pub fn seq(start: Type, continuation: Vec <String>) -> Self {
+		let start_idx = match start.as_scalar_loc() {
+			TypeKindScalarLocation::Global { index } => *index,
+			_ => unimplemented!()
+		};
+		let ty = RawType::Seq {
+			start_idx,
+			continuation
+		};
+		let index = if let Some((idx, _)) = Self::raw().iter().enumerate().find(|(_, ty2)| ty2.is_same_seq(&ty)) {
+			idx
+		} else {
+			Self::raw().push(ty);
+			Self::raw().len() - 1
+		};
+		Self::from_kind(TypeKind::Scalar { loc: TypeKindScalarLocation::Global { index } })
+	}
+
 	pub const fn from_kind(kind: TypeKind) -> Self {
 		Self {
 			kind
@@ -551,10 +598,19 @@ impl BakedType {
 		}
 	}
 
-	pub fn name(&self) -> &str {
+	pub fn alias(loc: TypeKindScalarLocation) -> Self {
+		Self {
+			kind: BakedTypeKind::Alias(loc),
+			// Will be replaced soon afterwards
+			llvm_type: unsafe { LLVMVoidTypeInContext(llvm_context()) }
+		}
+	}
+
+	pub fn name(&self) -> String {
 		match &self.kind {
-			BakedTypeKind::Builtin(builtin) => BUILTIN_TYPES[*builtin].name,
-			BakedTypeKind::Ordinary(ord) => &ord.name
+			BakedTypeKind::Builtin(builtin) => BUILTIN_TYPES[*builtin].name.to_string(),
+			BakedTypeKind::Ordinary(ord) => ord.name.to_string(),
+			BakedTypeKind::Alias(alias) => alias.name()
 		}
 	}
 }
@@ -562,20 +618,37 @@ impl BakedType {
 #[derive(Debug, Clone)]
 pub enum BakedTypeKind {
 	Builtin(usize),
-	Ordinary(TypeDef)
+	Ordinary(TypeDef),
+	Alias(TypeKindScalarLocation)
 }
 
 #[derive(Debug, Clone)]
 pub enum RawType {
 	Stub(String),
-	Backed(TypeDef)
+	Backed(TypeDef),
+	Seq {
+		start_idx: usize,
+		continuation: Vec <String>
+	}
 }
 
 impl RawType {
-	pub fn name(&self) -> &str {
+	pub fn is_same_seq(&self, other: &Self) -> bool {
 		match self {
-			Self::Stub(name) => name,
-			Self::Backed(typedef) => &typedef.name
+			Self::Seq { start_idx, continuation} => match other {
+				RawType::Seq { start_idx: start_index_b, continuation: continuation_b }
+					=> start_idx == start_index_b && continuation == continuation_b,
+				_ => false
+			},
+			_ => false
+		}
+	}
+
+	pub fn name(&self) -> String {
+		match self {
+			Self::Stub(name) => name.to_string(),
+			Self::Backed(typedef) => typedef.name.to_string(),
+			Self::Seq { start_idx, continuation } => format!("{}.{}", Type::raw()[*start_idx].name(), continuation.join("."))
 		}
 	}
 

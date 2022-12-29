@@ -1,10 +1,22 @@
 use crate::*;
 
+#[derive(Debug)]
 pub struct ParseFunBodyInputStruct {
 	pub fun_loc: FunLocation,
 	pub(in crate) mother_ty: Option <Type>,
 	line: *mut usize,
 	stmts: *mut [Stmt]
+}
+
+impl Clone for ParseFunBodyInputStruct {
+	fn clone(&self) -> Self {
+		Self {
+			fun_loc: self.fun_loc.clone(),
+			mother_ty: self.mother_ty.clone(),
+			line: self.line,
+			stmts: self.stmts
+		}
+	}
 }
 
 impl ParseFunBodyInputStruct {

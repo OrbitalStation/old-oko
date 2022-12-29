@@ -48,7 +48,9 @@ ty Filter
 
 `ty Name = opaque`
 
-## Types' methods
+## Types' associated items
+
+### Methods
 
 ```
 ty Wrapper = x: i32
@@ -62,6 +64,15 @@ ty Wrapper = x: i32
 * `.!` - a moved value of the type
 * `.$!` - a mutable moved value
 * `.*` - a static method
+
+### Types
+
+```
+ty Wrapper = x: Y.InnerWrapper
+    ty InnerWrapper = x: i32
+    
+    unwrap.& = i.x.x
+```
 
 ## Function definition
 

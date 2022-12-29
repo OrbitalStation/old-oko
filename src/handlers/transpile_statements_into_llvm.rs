@@ -58,10 +58,6 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 				_ => todo!("Enum")
 			}
 
-			for method in &mut typedef.methods {
-				create_fundef(stmts, &mut method.def)
-			}
-
 			let baked = match &mut typedef.subtypes {
                 TypeList::Baked(baked) => baked,
                 _ => unreachable!()
@@ -69,8 +65,12 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 			for ty in baked {
 				create_typedef(stmts, ty)
 			}
+
+			for method in &mut typedef.methods {
+				create_fundef(stmts, &mut method.def)
+			}
 		},
-		BakedTypeKind::Builtin(_) => { /* ignore */ }
+		BakedTypeKind::Builtin(_) | BakedTypeKind::Alias(_) => { /* ignore */ }
 	}
 }
 

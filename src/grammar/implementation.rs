@@ -46,11 +46,39 @@ peg::parser! { grammar okolang() for str {
 		= "&" { false }
 		/ "$" { true }
 
-	rule __non_ptr_ty(existing: bool, mother_ty: Option <&Type>) -> Type
+	rule __non_ptr_ty_start(existing: bool, mother_ty: Option <&Type>) -> Type
 		= "Y" !__ident_continuation() {? Ok(mother_ty.ok_or("type")?.clone()) }
 		/ name:ident() {? if existing { Type::get_existing_scalar(name).ok_or("type") } else { Ok(Type::meet_new_raw_scalar(None, name, None)) } }
-		/ "[" _ ty:__ty(existing, mother_ty) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
 		/ "(" _ ty:__ty(existing, mother_ty) _ ")" { ty }
+
+	rule __non_ptr_ty_cont1() -> String
+		= x:ident() { x }
+		/ "(" _ x:__non_ptr_ty_cont1() _ ")" { x }
+
+	rule __non_ptr_ty_cont_helper_propagate(x: Result <TypeKindScalarLocation, Vec <String>>) -> Result <TypeKindScalarLocation, Vec <String>>
+		= "" { x }
+
+	rule __non_ptr_ty_cont(loc: Result <TypeKindScalarLocation, Vec <String>>) -> Result <TypeKindScalarLocation, Vec <String>>
+		= _ "." _ name:__non_ptr_ty_cont1() x:__non_ptr_ty_cont_helper_propagate(open_option_in_arg!(__non_ptr_ty_cont_helper(loc, name))) next:__non_ptr_ty_cont(x.clone())?
+	{
+		match next {
+			Some(x) => x,
+			None => x
+		}
+	}
+
+	rule __non_ptr_ty(existing: bool, mother_ty: Option <&Type>) -> Type
+		= start:__non_ptr_ty_start(existing, mother_ty) cont:__non_ptr_ty_cont(__non_ptr_ty_helper(&start))?
+		{
+			match cont {
+				Some(x) => match x {
+					Ok(loc) => Type::from_kind(TypeKind::Scalar { loc }),
+					Err(continuation) => Type::seq(start, continuation)
+				},
+				None => start
+			}
+		}
+		/ "[" _ ty:__ty(existing, mother_ty) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
 		/ "(" _ types:(__ty(existing, mother_ty) ** (_ "," _)) _ ("," _)? ")" { Type::from_kind(TypeKind::Tuple { types }) }
 		/ mutable:__ty_mut_ref() _ ty:__ty(existing, mother_ty) { Type::reference(ty, mutable) }
 
@@ -261,10 +289,10 @@ peg::parser! { grammar okolang() for str {
 
 		Ok(Expr {
 			kind: ExprKind::FunCall {
-				fun: fun_loc,
+				fun: fun_loc.clone(),
 				args
 			},
-			ty: fun_def.ret_ty_as_determined(input, method_info).clone()
+			ty: fun_def.ret_ty_as_determined(input, method_info, fun_loc).clone()
 		})
 	}
 

@@ -7,7 +7,11 @@ fn main() {
     create_llvm_module("oko");
     create_llvm_builder();
 
-    let code = remove_comments(std::fs::read_to_string("code").unwrap().replace("    ", "\t"));
+    let code = std::fs::read_to_string("code").unwrap() + "\n";
+
+    let code = code.replace("    ", "\t");
+
+    let code = remove_comments(code);
 
     let mut stmts = parse_raw_oko_code(&code).unwrap();
 

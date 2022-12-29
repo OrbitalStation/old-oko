@@ -1,6 +1,7 @@
 use crate::*;
 
 #[repr(u8)]
+#[derive(Debug)]
 pub(in crate) enum AssociatedItem {
 	Method(AssociatedMethod),
 	/// Don't need to hold any data, everything is added automatically
@@ -51,14 +52,15 @@ pub(in crate) fn access_field_inner(mother: Option <Result <Type, Expr>>, input:
 			Ok(mother) => {
 				// Check for static associated items
 				let first = fields.remove(0);
-				// TODO: replace that `expect` with check for static associated variables
+				// TODO: replace that `?` with check for static associated variables
 				let (fun, def) = _get_static_method(&mother, &first)?;
+				let ty = def.ret_ty_as_determined(input, Some(AssociatedMethodKind::Static), fun.clone()).clone();
 				Expr {
 					kind: ExprKind::FunCall {
 						fun,
 						args: vec![]
 					},
-					ty: def.ret_ty_as_determined(input, Some(AssociatedMethodKind::Static)).clone()
+					ty
 				}
 			},
 			Err(mother) => mother
@@ -70,7 +72,7 @@ pub(in crate) fn access_field_inner(mother: Option <Result <Type, Expr>>, input:
 				if !fun.args.is_empty() {
 					return None
 				}
-				let ty = fun.ret_ty_as_determined(input, None).clone();
+				let ty = fun.ret_ty_as_determined(input, None, FunLocation::Global { stmt_index }).clone();
 				Some(Expr {
 					kind: ExprKind::FunCall {
 						fun: FunLocation::Global { stmt_index },
@@ -86,13 +88,14 @@ pub(in crate) fn access_field_inner(mother: Option <Result <Type, Expr>>, input:
 		cur = cur.dereference_if_ref_or_nop();
 		if let Some((ty_loc, method_index, method)) = _get_fun_get_loc_and_method(&cur.ty, &next) {
 			assert_eq!(method.def.args.len(), 0);
-			let ty = method.def.ret_ty_as_determined(input, Some(method.kind)).clone();
+			let loc = FunLocation::Method(FunMethodLocation {
+				ty_loc,
+				method_index
+			});
+			let ty = method.def.ret_ty_as_determined(input, Some(method.kind), loc.clone()).clone();
 			cur = Expr {
 				kind: ExprKind::FunCall {
-					fun: FunLocation::Method(FunMethodLocation {
-						ty_loc,
-						method_index,
-					}),
+					fun: loc,
 					args: vec![cur],
 				},
 				ty,
@@ -197,5 +200,33 @@ pub(in crate) fn dereference(ptr: Expr) -> Expr {
 			may_be_mutable: mutability
 		},
 		ty,
+	}
+}
+
+pub(in crate) fn __non_ptr_ty_helper(ty: &Type) -> Result <TypeKindScalarLocation, Vec <String>> {
+	match Type::type_list() {
+		TypeList::Baked(_) => Ok(ty.as_scalar_loc().clone()),
+		TypeList::Raw(_) => Err(vec![])
+	}
+}
+
+pub(in crate) fn __non_ptr_ty_cont_helper(loc: Result <TypeKindScalarLocation, Vec <String>>, new: String) -> Option <Result <TypeKindScalarLocation, Vec <String>>> {
+	match loc {
+		Ok(loc) => {
+			match &loc.type_def().unwrap().subtypes {
+				TypeList::Baked(baked) => Some(Ok(TypeKindScalarLocation::AssociatedItem {
+					index: baked.iter().enumerate().find(|(_, x) | match &x.kind {
+						BakedTypeKind::Ordinary(def) => def.name == new,
+						BakedTypeKind::Alias(_) | BakedTypeKind::Builtin(_) => unreachable!()
+					})?.0,
+					mother: Box::new(loc),
+				})),
+				TypeList::Raw(_) => unimplemented!()
+			}
+		},
+		Err(mut x) => {
+			x.push(new);
+			Some(Err(x))
+		}
 	}
 }

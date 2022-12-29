@@ -19,11 +19,22 @@ impl FunDef {
 		self.ret_ty.as_determined().is_simplistic()
 	}
 
-	pub fn ret_ty_as_determined(&mut self, input: ParseFunBodyInput, method_info: Option <AssociatedMethodKind>) -> &Type {
+	pub fn ret_ty_as_determined(
+		&mut self,
+		input: ParseFunBodyInput,
+		method_info: Option <AssociatedMethodKind>,
+		fun_loc: FunLocation
+	) -> &Type {
 		if let FunRetType::Determined(ty) = unsafe { &*(&self.ret_ty as *const FunRetType) } {
 			return ty
 		}
-		parse_fun_body(self, input, method_info);
+		let mut input_clone = (*input).clone();
+		input_clone.mother_ty = match &fun_loc {
+			FunLocation::Method(method) => Some(Type::from_kind(TypeKind::Scalar { loc: method.ty_loc.clone() })),
+			_ => None
+		};
+		input_clone.fun_loc = fun_loc;
+		parse_fun_body(self, &input_clone, method_info);
 		self.ret_ty.as_determined()
 	}
 }

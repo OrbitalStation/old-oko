@@ -260,7 +260,6 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			def
 		} => {
 			let ivalue = i.to_llvm_value(stmts, fun_name).0;
-
 			let field_val = unsafe { LLVMBuildStructGEP(llvm_builder(), ivalue, *field as _, b"\0".as_ptr() as _) };
 			if !def[*field].ty.is_simplistic() || is_lvalue {
 				// It does not matter whether `is_lvalue` is set or not -
