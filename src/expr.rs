@@ -219,9 +219,18 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt], fun_
 }
 
 fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
-	// TODO! Rework so that tuple types match
-	let mut values = values.iter().map(|x| x.to_llvm_value(stmts, fun_name).0).collect::<Vec <_>>();
-	unsafe { LLVMConstStructInContext(llvm_context(), values.as_mut_ptr(), values.len() as _, 0) }
+	unsafe {
+		let tuple_type = match Type::meet_new_tuple(values.iter().map(|x| x.ty.clone()).collect()).kind {
+			TypeKind::Tuple { index } => Type::tuple_list()[index].llvm_type,
+			_ => unreachable!()
+		};
+		let tuple =  LLVMBuildAlloca(llvm_builder(), tuple_type, b"\0".as_ptr() as _);
+		for (idx, value) in values.into_iter().enumerate() {
+			let elem = LLVMBuildStructGEP(llvm_builder(), tuple, idx as _, b"\0".as_ptr() as _);
+			LLVMBuildStore(llvm_builder(), value.to_llvm_value(stmts, fun_name).0, elem);
+		}
+		tuple
+	}
 }
 
 fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> LLVMValueRef {

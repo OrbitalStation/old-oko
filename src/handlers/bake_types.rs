@@ -18,24 +18,24 @@ pub fn bake_types() {
             start_idx,
             continuation
         } = i {
-            let mut cur = &types[*start_idx];
+            let mut cur = types[*start_idx].unaliasize_to_self(&types);
             let mut loc = TypeKindScalarLocation::Global { index: *start_idx };
             for part in continuation {
                 match cur {
-                    RawType::Backed(backed) => match &backed.subtypes {
+                    Some(RawType::Backed(backed)) => match &backed.subtypes {
                         TypeList::Raw(raw) => match raw.iter().enumerate().find(|(_, x)| x.name() == *part) {
                             Some((index, x)) => {
-                                cur = x;
+                                cur = x.unaliasize_to_self(&types);
                                 loc = TypeKindScalarLocation::AssociatedItem {
                                     index,
                                     mother: Box::new(loc),
                                 }
                             },
-                            None => panic!("type `{}` does not contain an associated type named `{part}`", cur.name())
+                            None => panic!("type `{}` does not contain an associated type named `{part}`", cur.unwrap().name())
                         },
                         _ => unreachable!()
                     },
-                    _ => panic!("type `{}` does not contain any associated types", types[*start_idx].name())
+                    _ => panic!("type `{}` does not contain any associated types", cur.unwrap().name())
                 }
             }
             baked_locs.push_back(loc)

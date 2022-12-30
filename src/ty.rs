@@ -4,6 +4,33 @@ use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
 
+#[derive(Debug, Clone)]
+pub struct Tuple {
+	pub fields: Vec <Type>,
+	pub llvm_type: LLVMTypeRef
+}
+
+impl Tuple {
+	pub fn from_fields(fields: Vec <Type>) -> Self {
+		let name = format!(".tuple.{}", fields.iter().map(|ty| if matches!(ty.kind, TypeKind::Integer) {
+			String::from("i32")
+		} else {
+			format!("{ty:?}")
+		}).collect::<Vec <_>>().join("-"));
+
+		let llvm_type = unsafe { LLVMStructCreateNamed(llvm_context(), name.as_ptr() as _) };
+
+		Self {
+			fields,
+			llvm_type
+		}
+	}
+
+	pub fn get(index: usize) -> &'static mut Vec <Type> {
+		&mut Type::tuple_list()[index].fields
+	}
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
 pub enum AssociatedMethodKind {
@@ -262,7 +289,7 @@ pub enum TypeKind {
 		ty: Box <Type>,
 		size: usize
 	},
-	Tuple { types: Vec <Type> },
+	Tuple { index: usize },
 	Integer
 }
 
@@ -285,7 +312,8 @@ impl Debug for Type {
 			TypeKind::Array { ty, size } => {
 				f.write_fmt(format_args!("[{ty:?} x {size}]"))
 			},
-			TypeKind::Tuple { types } => {
+			TypeKind::Tuple { index } => {
+				let types = Tuple::get(*index);
 				f.write_char('(')?;
 				for ty in types.iter().rev().skip(1).rev() {
 					ty.fmt(f)?;
@@ -305,7 +333,16 @@ impl Debug for Type {
 }
 
 impl Type {
-	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
+	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { index: 0 });
+
+	pub fn tuple_list() -> &'static mut Vec <Tuple> {
+		static mut L: Vec <Tuple> = vec![];
+		unsafe { &mut L }
+	}
+
+	pub fn initialize_statics() {
+		Type::tuple_list().push(Tuple::from_fields(vec![]));
+	}
 
 	pub fn unaliasize(&self) -> &Type {
 		fn handle_loc(loc: &TypeKindScalarLocation) -> Option <&Type> {
@@ -403,21 +440,22 @@ impl Type {
 		self.get_fields_of_struct().is_some()
 	}
 
+	pub fn is_tuple(&self) -> bool {
+		matches!(self.kind, TypeKind::Tuple { .. })
+	}
+
 	/// A simplistic type is a type that can be used directly in LLVM-IR
 	pub fn is_simplistic(&self) -> bool {
 		match &self.unaliasize().kind {
 			TypeKind::Scalar { loc } => loc.builtin().is_some(),
 			TypeKind::Pointer { .. } | TypeKind::Reference { .. } | TypeKind::Integer => true,
-			TypeKind::Tuple { types } => types.len() == 0,
+			// Know for sure the only empty tuple is that with `0` index
+			TypeKind::Tuple { index } => *index == 0,
 			TypeKind::Array { size, .. } => *size == 0
 		}
 	}
 
 	pub fn eq_implicit(&mut self, other: &mut Self, expr1: Option <&mut ExprKind>, expr2: Option <&mut ExprKind>) -> bool {
-		if self == other {
-			return true
-		}
-
 		if !self.try_implicitly_convert(other, expr1) {
 			other.try_implicitly_convert(self, expr2);
 		}
@@ -426,7 +464,11 @@ impl Type {
 	}
 
 	pub fn try_implicitly_convert(&mut self, other: &Self, expr: Option <&mut ExprKind>) -> bool {
-		match &self.kind {
+		if self == other {
+			return true
+		}
+
+		match &mut self.kind {
 			TypeKind::Integer => match &other.kind {
 				TypeKind::Integer => false,
 				_ => {
@@ -442,6 +484,30 @@ impl Type {
 					}
 					true
 				}
+			},
+			TypeKind::Array { ty, size } => match &other.kind {
+				TypeKind::Array { ty: ty2, size: size2 } => {
+					if *size == *size2 {
+						ty.try_implicitly_convert(ty2, expr)
+					} else {
+						false
+					}
+				},
+				_ => false
+			},
+			TypeKind::Tuple { index } => match &other.kind {
+				TypeKind::Tuple { index: index2 } => if !Tuple::get(*index).is_empty() {
+					let mut all = true;
+					for (ty, ty2) in Tuple::get(*index).iter_mut().zip(Tuple::get(*index2).iter()) {
+						if !ty.try_implicitly_convert(ty2, unsafe { core::ptr::read(&expr) }) {
+							all = false
+						}
+					}
+					all
+				} else {
+					false
+				},
+				_ => false
 			},
 			_ => false
 		}
@@ -495,9 +561,8 @@ impl Type {
 			TypeKind::Array { ty, size } => {
 				unsafe { LLVMArrayType(ty.llvm_type(is_needed_to_do_reassign), *size as _) }
 			},
-			TypeKind::Tuple { types } => {
-				let mut types = types.iter().map(|x| x.llvm_type(is_needed_to_do_reassign)).collect::<Vec <_>>();
-				unsafe { LLVMStructType(types.as_mut_ptr(), types.len() as _, 0) }
+			TypeKind::Tuple { index } => {
+				Self::tuple_list()[*index].llvm_type
 			},
 			TypeKind::Integer => Self::get_by_name("i32").llvm_type(is_needed_to_do_reassign)
 		}
@@ -636,6 +701,16 @@ impl Type {
 		}
 	}
 
+	pub fn meet_new_tuple(fields: Vec <Type>) -> Self {
+		if let Some((index, _)) = Self::tuple_list().iter().enumerate().find(|(_, x)| x.fields == fields) {
+			Self::from_kind(TypeKind::Tuple { index })
+		} else {
+			let index = Self::tuple_list().len();
+			Self::tuple_list().push(Tuple::from_fields(fields));
+			Self::from_kind(TypeKind::Tuple { index })
+		}
+	}
+
 	pub const fn from_kind(kind: TypeKind) -> Self {
 		Self {
 			kind
@@ -732,6 +807,19 @@ impl RawType {
 				_ => false
 			},
 			_ => false
+		}
+	}
+
+	pub fn unaliasize_to_self <'a> (&'a self, global_list: &'a Vec <Self>) -> Option <&'a Self> {
+		match self {
+			Self::Alias { to, .. } => match to.as_scalar_loc()? {
+				TypeKindScalarLocation::Global { index } => &global_list[*index],
+				TypeKindScalarLocation::AssociatedItem { mother, index } => match &mother.type_def().unwrap().subtypes {
+					TypeList::Raw(raw) => &raw[*index],
+					_ => unreachable!()
+				}
+			}.unaliasize_to_self(global_list),
+			_ => Some(self)
 		}
 	}
 

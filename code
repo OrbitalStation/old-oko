@@ -34,21 +34,25 @@ ty IWrapper = alias Wrapper.InnerWrapper.VeryInner.IWrapper
 ty int = alias i32
 ty char = alias i8
 
+ty VeryInner = opaque
+    ty IWrapper = alias &Wrapper
+
+    identity.* x: char = x
+
+    twentySeven.* = 27
+
+ty InnerWrapper = x y z w: char
+    ty VeryInner = alias VeryInner
+
+    getZ.* i: Y = Y.VeryInner.identity i.z
+
 ty Wrapper
 	x: int
 	y: Alias
 
 	ty RefToWrapper = alias IWrapper
 
-	ty InnerWrapper = x y z w: char
-        ty VeryInner = opaque
-            ty IWrapper = alias &Wrapper
-
-            identity.* x: char = x
-
-            twentySeven.* = 27
-
-		getZ.* i: Y = Y.VeryInner.identity i.z
+	ty InnerWrapper = alias InnerWrapper
 
 	new.* i: Y.RefToWrapper = i
 
@@ -58,8 +62,14 @@ ty Wrapper
 
 twentySeven = Alias.VeryInner.twentySeven
 
+ty InnerWrapper2 = x: int
+
 * An example from README.md
 ty Wrapper2 = x: Y.InnerWrapper
-    ty InnerWrapper = x: int
+    ty InnerWrapper = alias InnerWrapper2
 
     unwrap.& = i.x.x
+
+test -> (i32, i32)
+    $a := (identity 4), identity 4
+    return a

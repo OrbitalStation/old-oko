@@ -79,7 +79,7 @@ peg::parser! { grammar okolang() for str {
 			}
 		}
 		/ "[" _ ty:__ty(existing, mother_ty) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
-		/ "(" _ types:(__ty(existing, mother_ty) ** (_ "," _)) _ ("," _)? ")" { Type::from_kind(TypeKind::Tuple { types }) }
+		/ "(" _ types:(__ty(existing, mother_ty) ** (_ "," _)) _ ("," _)? ")" { Type::meet_new_tuple(types) }
 		/ mutable:__ty_mut_ref() _ ty:__ty(existing, mother_ty) { Type::reference(ty, mutable) }
 
 	rule __ty(existing: bool, mother_ty: Option <&Type>) -> Type
@@ -300,13 +300,17 @@ peg::parser! { grammar okolang() for str {
 
 		assert_eq!(args.len(), fun_def.args.len(), "argument number doesn't match in call of `{}`", fun_def.name);
 
-		for (idx, arg) in args.iter().enumerate() {
-			assert_eq!(arg.ty, fun_def.args[idx].ty, "argument types doesn't match in call of `{}`", fun_def.name);
+		for (idx, arg) in args.iter_mut().enumerate() {
+			if !arg.ty.try_implicitly_convert(&fun_def.args[idx].ty, None) {
+				panic!("argument types doesn't match in call of `{}`", fun_def.name)
+			}
 			arg.mark_as_moved_and_panic_if_already(input)
 		}
 
 		let method_info = if let Some(i) = i_of_method {
 			args.insert(0, i);
+			Some(fun_loc.method().kind)
+		} else if matches!(fun_loc, FunLocation::Method(_)) {
 			Some(fun_loc.method().kind)
 		} else {
 			None
@@ -461,7 +465,7 @@ peg::parser! { grammar okolang() for str {
 			core::mem::replace(&mut tuple[0], Expr::UNIT_TUPLE)
 		} else {
 			Expr {
-				ty: Type::from_kind(TypeKind::Tuple { types: tuple.iter().map(|x| x.ty.clone()).collect() }),
+				ty: Type::meet_new_tuple(tuple.iter().map(|x| x.ty.clone()).collect()),
 				kind: ExprKind::Tuple(tuple)
 			}
 		}

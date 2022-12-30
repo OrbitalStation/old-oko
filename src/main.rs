@@ -13,6 +13,8 @@ fn main() {
 
     let code = remove_comments(code);
 
+    Type::initialize_statics();
+
     let mut stmts = parse_raw_oko_code(&code).unwrap();
 
     bake_types();

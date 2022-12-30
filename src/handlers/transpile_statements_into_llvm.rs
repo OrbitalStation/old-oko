@@ -6,6 +6,10 @@ use crate::*;
 
 pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 	let stmts_ref = &*stmts as *const [Stmt];
+	for tuple in Type::tuple_list() {
+        let mut types = tuple.fields.iter().map(|x| x.llvm_type(false)).collect::<Vec <_>>();
+		unsafe { LLVMStructSetBody(tuple.llvm_type, types.as_mut_ptr(), types.len() as _, 0) };
+    }
 	for stmt in stmts.iter_mut() {
 		match stmt {
 			Stmt::ExternFun(_) => { /* already done; ignore */ },
