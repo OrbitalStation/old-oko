@@ -205,7 +205,7 @@ pub(in crate) fn dereference(ptr: Expr) -> Expr {
 
 pub(in crate) fn __non_ptr_ty_helper(ty: &Type) -> Result <TypeKindScalarLocation, Vec <String>> {
 	match Type::type_list() {
-		TypeList::Baked(_) => Ok(ty.as_scalar_loc().clone()),
+		TypeList::Baked(_) => Ok(ty.as_scalar_loc().unwrap().clone()),
 		TypeList::Raw(_) => Err(vec![])
 	}
 }
@@ -217,7 +217,8 @@ pub(in crate) fn __non_ptr_ty_cont_helper(loc: Result <TypeKindScalarLocation, V
 				TypeList::Baked(baked) => Some(Ok(TypeKindScalarLocation::AssociatedItem {
 					index: baked.iter().enumerate().find(|(_, x) | match &x.kind {
 						BakedTypeKind::Ordinary(def) => def.name == new,
-						BakedTypeKind::Alias(_) | BakedTypeKind::Builtin(_) => unreachable!()
+						BakedTypeKind::FullAlias { name, .. } => *name == new,
+						BakedTypeKind::SeqAlias(_) | BakedTypeKind::Builtin(_) => unreachable!()
 					})?.0,
 					mother: Box::new(loc),
 				})),

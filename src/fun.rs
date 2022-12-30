@@ -62,7 +62,7 @@ impl FunArg {
 	}
 
 	pub fn llvm_type(&self) -> LLVMTypeRef {
-		let ty = self.ty.llvm_type();
+		let ty = self.ty.llvm_type(false);
 		if self.is_by_value() {
 			ty
 		} else {

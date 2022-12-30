@@ -189,7 +189,7 @@ impl ExprKind {
 fn build_literal(lit: &ExprLiteral, ty: &Type) -> LLVMValueRef {
 	unsafe {
 		match lit {
-			ExprLiteral::Integer(int) => LLVMConstInt(ty.llvm_type(), core::mem::transmute(*int as i64), (*int > 0) as _)
+			ExprLiteral::Integer(int) => LLVMConstInt(ty.llvm_type(false), core::mem::transmute(*int as i64), (*int > 0) as _)
 		}
 	}
 }
@@ -286,7 +286,7 @@ fn build_fun_call(fun: &FunLocation, args: &Vec <Expr>, stmts: &[Stmt], fun_name
 	if fun.is_ret_by_value() {
 		unsafe { LLVMBuildCall(llvm_builder(), fun.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 	} else {
-		let ret = unsafe { LLVMBuildAlloca(llvm_builder(), fun.ret_ty.as_determined().llvm_type(), b"\0".as_ptr() as _) };
+		let ret = unsafe { LLVMBuildAlloca(llvm_builder(), fun.ret_ty.as_determined().llvm_type(false), b"\0".as_ptr() as _) };
 		args.push(ret);
 		unsafe { LLVMBuildCall(llvm_builder(), fun.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) };
 		ret
@@ -340,7 +340,7 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 			}
 
 			let result = if *ty != Type::UNIT_TUPLE {
-				let phi = LLVMBuildPhi(llvm_builder(), ty.llvm_type(), b"\0".as_ptr() as _);
+				let phi = LLVMBuildPhi(llvm_builder(), ty.llvm_type(false), b"\0".as_ptr() as _);
 				let mut values = vec![yes_val.unwrap(), no_val.unwrap()];
 				let mut blocks = vec![yes_bb, no_bb];
 				LLVMAddIncoming(phi, values.as_mut_ptr(), blocks.as_mut_ptr(), 2);
@@ -407,13 +407,18 @@ impl Expr {
 	};
 
 	pub fn dereference_if_ref_or_nop(self) -> Self {
-		match self.ty.kind.clone() {
-			TypeKind::Reference { ty, mutable } => Self {
+		let unaliased = self.ty.unaliasize();
+
+		match &unaliased.kind {
+			TypeKind::Reference { mutable, ty } => Self {
 				kind: ExprKind::Dereference {
-					ptr: Box::new(self),
-					may_be_mutable: mutable
+					ptr: Box::new(Self {
+						kind: self.kind.clone(),
+						ty: unaliased.clone()
+					}),
+					may_be_mutable: *mutable
 				},
-				ty: *ty,
+				ty: (**ty).clone(),
 			},
 			_ => self
 		}
@@ -434,17 +439,6 @@ impl Expr {
 			_ => false
 		}
 	}
-
-	// pub fn get_pure_llvm_type_and_value(&mut self, stmts: &[Stmt], name: &str) -> (LLVMTypeRef, LLVMValueRef) {
-	// 	let mut val = self.to_llvm_value(stmts, name).0;
-	// 	let ty = if !self.ty.is_copy() {
-	// 		val = unsafe { LLVMBuildLoad(llvm_builder(), val, b"\0".as_ptr() as _) };
-	// 		self.ty.llvm_type()
-	// 	} else {
-	// 		self.ty.llvm_type()
-	// 	};
-	// 	(ty, val)
-	// }
 
 	pub fn get_variable_state <'a> (&self, input: ParseFunBodyInput <'a>) -> &'a mut VariableState {
 		match &self.kind {

@@ -48,6 +48,12 @@ ty Filter
 
 `ty Name = opaque`
 
+### Type aliases
+
+`ty int = alias i32`
+
+`ty ReferenceToI32 = alias &i32`
+
 ## Types' associated items
 
 ### Methods

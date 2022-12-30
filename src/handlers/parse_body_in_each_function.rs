@@ -10,7 +10,7 @@ pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
         match input.cur_mut() {
             Stmt::FunDef(fun) => parse_fun_body(fun, &input, None),
             Stmt::ExternFun(fun) => {
-                let args = fun.args.iter().map(|x| x.llvm_type()).collect();
+                let args = fun.args.iter().map(|x| x.llvm_type(false)).collect();
                 fun.llvm_fun = Some(create_llvm_fun(&fun.name, args, &fun.ret_ty));
             },
             _ => continue
@@ -79,7 +79,7 @@ pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: O
     fun.llvm_fun = Some(if let Some(kind) = method_info {
         let ty = input.mother_ty().unwrap();
         if kind != AssociatedMethodKind::Static {
-            args.insert(0, kind.modify_llvm_type(ty.llvm_type()));
+            args.insert(0, kind.modify_llvm_type(ty.llvm_type(false)));
         }
         create_llvm_fun(&format!("{}.{}", ty.name_for_llvm(), fun.name), args, ret_ty)
     } else {

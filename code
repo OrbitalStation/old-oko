@@ -1,29 +1,3 @@
-ty Wrapper
-	x: i32
-	y: Y.InnerWrapper
-
-	ty InnerWrapper = x y z w: i8
-        ty VeryInner = opaque
-            identity.* x: i8 = x
-
-            twentySeven.* = 27
-
-		getZ.* i: Y = Y.VeryInner.identity i.z
-
-	new.* i: &Y = i
-
-	unwrap.! = Y.InnerWrapper.getZ i.y
-
-	test.* i: &Y = (Y.new i).x
-
-twentySeven = Wrapper.InnerWrapper.VeryInner.twentySeven
-
-* An example from README.md
-ty Wrapper2 = x: Y.InnerWrapper
-    ty InnerWrapper = x: i32
-
-    unwrap.& = i.x.x
-
 ty Opaque = opaque
 
 * Is needed because otherwise cunning LLVM will cut `Opaque` out
@@ -52,3 +26,40 @@ add x y: u8 = x + y
 * `copy` influences only move semantics, automatic cloning and dropping.
 * It does NOT influence usages of `alloca` instruction to create the value!!!
 * ************ *
+
+ty Alias = alias Wrapper.InnerWrapper
+
+ty IWrapper = alias Wrapper.InnerWrapper.VeryInner.IWrapper
+
+ty int = alias i32
+ty char = alias i8
+
+ty Wrapper
+	x: int
+	y: Alias
+
+	ty RefToWrapper = alias IWrapper
+
+	ty InnerWrapper = x y z w: char
+        ty VeryInner = opaque
+            ty IWrapper = alias &Wrapper
+
+            identity.* x: char = x
+
+            twentySeven.* = 27
+
+		getZ.* i: Y = Y.VeryInner.identity i.z
+
+	new.* i: Y.RefToWrapper = i
+
+	unwrap.! = Y.InnerWrapper.getZ i.y
+
+	test.* i: Y.RefToWrapper = (Y.new i).x
+
+twentySeven = Alias.VeryInner.twentySeven
+
+* An example from README.md
+ty Wrapper2 = x: Y.InnerWrapper
+    ty InnerWrapper = x: int
+
+    unwrap.& = i.x.x

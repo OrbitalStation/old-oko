@@ -107,15 +107,13 @@ peg::parser! { grammar okolang() for str {
 			state_of_i: VariableState::valid(mother_ty)
 		})
 	}
-		/ type_definition(Some(mother_ty.as_scalar_loc()))
+		/ type_definition(Some(mother_ty.as_scalar_loc().unwrap()))
 	{ AssociatedItem::Type }
 
 	pub(in crate) rule typedef_assoc_items(mother_ty: &Type) -> Vec <AssociatedItem>
 		= items:typedef_assoc_item(mother_ty)* nl()? { items }
 
-	rule __type_definition_add(mother: Option <&TypeKindScalarLocation>) -> Type
-		= name:ident()
-	{
+	rule __type_definition_add(mother: Option <&TypeKindScalarLocation>) -> Type = name:ident() {
 		Type::meet_new_raw_scalar(mother, name.clone(), Some(TypeDef {
 			name,
 			// Will be replaced
@@ -125,10 +123,37 @@ peg::parser! { grammar okolang() for str {
 		}))
 	}
 
-	rule type_definition(mother: Option <&TypeKindScalarLocation>) -> TypeKindScalarLocation
-		= "ty" __ ty:__type_definition_add(mother) kind:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
+	rule __type_alias_definition_add(mother: Option <&TypeKindScalarLocation>) -> TypeKindScalarLocation = name:ident() {
+		Type::add_new_raw_alias(mother, name)
+	}
+
+	rule __type_alias_definition_body(prev_mother: Option <&TypeKindScalarLocation>, mother: &TypeKindScalarLocation)
+		= _ "=" _ "alias" __ ty:ty(Some(&mother.simple_scalar())) nl()
 	{
-		let loc = ty.as_scalar_loc();
+		match mother.raw().unwrap() {
+			RawType::Alias { to, .. } => *to = ty,
+			_ => unreachable!()
+		}
+	}
+		/ ""
+	{?
+		// Cleanup unsuccessful try
+		match prev_mother.map(|mother| &mut mother.type_def().unwrap().subtypes).unwrap_or(Type::type_list()) {
+			TypeList::Raw(raw) => raw,
+			_ => unimplemented!()
+		}.pop();
+		Err("type alias")
+	}
+
+	rule __type_alias_definition(mother: Option <&TypeKindScalarLocation>) -> TypeKindScalarLocation
+		= "ty" __ loc:__type_alias_definition_add(mother) __type_alias_definition_body(mother, &loc)
+	{ loc }
+
+	rule type_definition(mother: Option <&TypeKindScalarLocation>) -> TypeKindScalarLocation
+		= x:__type_alias_definition(mother) { x }
+		/ "ty" __ ty:__type_definition_add(mother) kind:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
+	{
+		let loc = ty.as_scalar_loc().unwrap();
 
 		let items = typedef_assoc_items(&(assoc_items + "\n"), &ty).unwrap();
 

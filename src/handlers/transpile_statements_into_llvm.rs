@@ -51,7 +51,7 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 		BakedTypeKind::Ordinary(typedef) => {
 			match &typedef.kind {
 				TypeDefKind::Struct { fields } => {
-					let mut fields = fields.iter().map(|x| x.ty.llvm_type()).collect::<Vec <_>>();
+					let mut fields = fields.iter().map(|x| x.ty.llvm_type(false)).collect::<Vec <_>>();
 					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
 				},
 				TypeDefKind::Opaque => { /* ignore */ }
@@ -70,7 +70,7 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 				create_fundef(stmts, &mut method.def)
 			}
 		},
-		BakedTypeKind::Builtin(_) | BakedTypeKind::Alias(_) => { /* ignore */ }
+		BakedTypeKind::Builtin(_) | BakedTypeKind::SeqAlias(_) | BakedTypeKind::FullAlias { .. } => { /* ignore */ }
 	}
 }
 
@@ -78,9 +78,9 @@ pub fn create_llvm_fun(name: &str, mut args: Vec <LLVMTypeRef>, ret_ty: &Type) -
 	let ret_ty = if *ret_ty == Type::UNIT_TUPLE {
 		unsafe { LLVMVoidTypeInContext(llvm_context()) }
 	} else if ret_ty.is_simplistic() {
-		ret_ty.llvm_type()
+		ret_ty.llvm_type(false)
 	} else {
-		args.push(unsafe { LLVMPointerType(ret_ty.llvm_type(), 0) });
+		args.push(unsafe { LLVMPointerType(ret_ty.llvm_type(false), 0) });
 		unsafe { LLVMVoidTypeInContext(llvm_context()) }
 	};
 	let fun_type = unsafe { LLVMFunctionType(ret_ty, args.as_mut_ptr(), args.len() as _, 0) };

@@ -32,7 +32,6 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 						let load = LLVMBuildLoad(llvm_builder(), expr.to_llvm_value(stmts, name).0, b"\0".as_ptr() as _);
 						let fun = LLVMGetBasicBlockParent(LLVMGetInsertBlock(llvm_builder()));
 						let last_arg = LLVMGetLastParam(fun);
-						LLVMDumpValue(last_arg);
 						LLVMBuildStore(llvm_builder(), load, last_arg);
 						LLVMBuildRetVoid(llvm_builder());
 					}
@@ -75,7 +74,7 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut HashMap <usize, V
 			FunStmt::ValDef { line } => {
 				let v = vals.get_mut(line).unwrap();
 				if v.mutable {
-					let (ty, val) = (v.init.ty.llvm_type(), v.init.to_llvm_value(stmts, name).0);
+					let (ty, val) = (v.init.ty.llvm_type(false), v.init.to_llvm_value(stmts, name).0);
 					let llvm_value = unsafe { LLVMBuildAlloca(llvm_builder(), ty, b"\0".as_ptr() as _) };
 					unsafe { LLVMBuildStore(llvm_builder(), val, llvm_value) };
 					v.llvm_value = Some(llvm_value)

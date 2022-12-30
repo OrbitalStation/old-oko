@@ -142,14 +142,16 @@ pub struct Type {
 
 impl PartialEq for Type {
 	fn eq(&self, other: &Self) -> bool {
-		match &self.kind {
-			TypeKind::Scalar { loc } => match &other.kind {
+		let self_ = self.unaliasize();
+		let other_ = other.unaliasize();
+		match &self_.kind {
+			TypeKind::Scalar { loc } => match &other_.kind {
 				TypeKind::Scalar { loc: loc2 } => return loc.name() == loc2.name(),
 				_ => ()
 			},
 			_ => ()
 		}
-		self.kind.eq(&other.kind)
+		self_.kind.eq(&other_.kind)
 	}
 }
 
@@ -163,6 +165,19 @@ pub enum TypeKindScalarLocation {
 }
 
 impl TypeKindScalarLocation {
+	pub fn simple_scalar(&self) -> Type {
+		Type::from_kind(TypeKind::Scalar {
+			loc: self.clone()
+		})
+	}
+
+	pub fn get_list_of_raw_subtypes_for_mother_ty(mother: Option <&Self>) -> &'static mut Vec <RawType> {
+		match mother.map(|mother| &mut mother.type_def().unwrap().subtypes).unwrap_or(Type::type_list()) {
+			TypeList::Raw(raw) => raw,
+			_ => unimplemented!()
+		}
+	}
+
 	pub fn get_list_and_index(&self) -> (&'static mut TypeList, usize) {
 		match self {
 			Self::Global { index } => (Type::type_list(), *index),
@@ -176,13 +191,24 @@ impl TypeKindScalarLocation {
 		match list {
 			TypeList::Baked(baked) => match &mut baked[index].kind {
 				BakedTypeKind::Ordinary(def) => Some(def),
-				BakedTypeKind::Alias(alias) => return alias.type_def(),
+				BakedTypeKind::SeqAlias(alias) => return alias.type_def(),
+				BakedTypeKind::FullAlias { to, ..} => return to.as_scalar_loc()?.type_def(),
 				_ => None
 			},
 			TypeList::Raw(raw) => match &mut raw[index] {
 				RawType::Backed(backed) => Some(backed),
+				RawType::Alias { to, .. } => return to.as_scalar_loc()?.type_def(),
 				_ => None
 			}
+		}
+	}
+
+	pub fn raw(&self) -> Option <&'static mut RawType> {
+		let (list, index) = self.get_list_and_index();
+
+		match list {
+			TypeList::Raw(raw) => Some(&mut raw[index]),
+			_ => None
 		}
 	}
 
@@ -281,6 +307,35 @@ impl Debug for Type {
 impl Type {
 	pub const UNIT_TUPLE: Type = Type::from_kind(TypeKind::Tuple { types: vec![] });
 
+	pub fn unaliasize(&self) -> &Type {
+		fn handle_loc(loc: &TypeKindScalarLocation) -> Option <&Type> {
+			let (list, idx) = loc.get_list_and_index();
+			match list {
+				TypeList::Raw(raw) => match &raw[idx] {
+					RawType::Alias { to, .. } => return Some(to),
+					_ => ()
+				},
+				TypeList::Baked(baked) => {
+					match &baked[idx].kind {
+						BakedTypeKind::FullAlias { to, .. } => return Some(to.unaliasize()),
+						BakedTypeKind::SeqAlias(loc) => return handle_loc(loc),
+						_ => ()
+					}
+				},
+			}
+			None
+		}
+
+		match &self.kind {
+			TypeKind::Scalar { loc } => if let Some(x) = handle_loc(loc) {
+				return x
+			},
+			_ => ()
+		}
+
+		self
+	}
+
 	pub fn name_for_llvm(&self) -> String {
 		match &self.kind {
 			TypeKind::Scalar { loc } => loc.name(),
@@ -350,7 +405,7 @@ impl Type {
 
 	/// A simplistic type is a type that can be used directly in LLVM-IR
 	pub fn is_simplistic(&self) -> bool {
-		match &self.kind {
+		match &self.unaliasize().kind {
 			TypeKind::Scalar { loc } => loc.builtin().is_some(),
 			TypeKind::Pointer { .. } | TypeKind::Reference { .. } | TypeKind::Integer => true,
 			TypeKind::Tuple { types } => types.len() == 0,
@@ -411,17 +466,22 @@ impl Type {
 		self.is_signed() || self.is_unsigned() || matches!(self.kind, TypeKind::Integer)
 	}
 
-	pub fn llvm_type(&self) -> LLVMTypeRef {
+	pub fn llvm_type(&self, is_needed_to_do_reassign: bool) -> LLVMTypeRef {
 		match &self.kind {
 			TypeKind::Scalar { loc } => {
 				let (list, index) = loc.get_list_and_index();
 				match list {
-					TypeList::Baked(baked) => baked[index].llvm_type,
+					TypeList::Baked(baked) => {
+						if is_needed_to_do_reassign {
+							assign_correct_llvm_type_to_a_baked_one(&mut baked[index])
+						}
+						baked[index].llvm_type
+					},
 					TypeList::Raw(_) => unimplemented!()
 				}
 			},
 			TypeKind::Pointer { ty, ptrs } => {
-				let mut ty = ty.llvm_type();
+				let mut ty = ty.llvm_type(is_needed_to_do_reassign);
 				for _ in 0..ptrs.len {
 					// No distinction between mutable and const pointers
 					ty = unsafe { LLVMPointerType(ty, 0) }
@@ -430,16 +490,16 @@ impl Type {
 			},
 			TypeKind::Reference { ty, .. } => {
 				// No distinction between either refs and ptrs or mutable and immutable
-				unsafe { LLVMPointerType(ty.llvm_type(), 0) }
+				unsafe { LLVMPointerType(ty.llvm_type(is_needed_to_do_reassign), 0) }
 			},
 			TypeKind::Array { ty, size } => {
-				unsafe { LLVMArrayType(ty.llvm_type(), *size as _) }
+				unsafe { LLVMArrayType(ty.llvm_type(is_needed_to_do_reassign), *size as _) }
 			},
 			TypeKind::Tuple { types } => {
-				let mut types = types.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
+				let mut types = types.iter().map(|x| x.llvm_type(is_needed_to_do_reassign)).collect::<Vec <_>>();
 				unsafe { LLVMStructType(types.as_mut_ptr(), types.len() as _, 0) }
 			},
-			TypeKind::Integer => Self::get_by_name("i32").llvm_type()
+			TypeKind::Integer => Self::get_by_name("i32").llvm_type(is_needed_to_do_reassign)
 		}
 	}
 
@@ -465,10 +525,7 @@ impl Type {
 	pub fn meet_new_raw_scalar(mother: Option <&TypeKindScalarLocation>, name: String, typedef: Option <TypeDef>) -> Self {
 		Self::from_kind(TypeKind::Scalar {
 			loc: {
-				let list = match mother.map(|mother| &mut mother.type_def().unwrap().subtypes).unwrap_or(Self::type_list()) {
-					TypeList::Raw(raw) => raw,
-					_ => unimplemented!()
-				};
+				let list = TypeKindScalarLocation::get_list_of_raw_subtypes_for_mother_ty(mother);
 				let index = match list.iter_mut().enumerate().find(|(_, ty)| ty.name() == name) {
 					Some((idx, ty)) => {
 						if let Some(typedef) = typedef {
@@ -478,7 +535,11 @@ impl Type {
 								*ty = RawType::Backed(typedef)
 							}
 						}
-						idx
+						if let RawType::Alias { to, .. } = ty {
+							return to.clone()
+						} else {
+							idx
+						}
 					},
 					None => {
 						list.push(match typedef {
@@ -502,10 +563,10 @@ impl Type {
 		})
 	}
 
-	pub fn as_scalar_loc(&self) -> &TypeKindScalarLocation {
+	pub fn as_scalar_loc(&self) -> Option <&TypeKindScalarLocation> {
 		match &self.kind {
-			TypeKind::Scalar { loc } => loc,
-			_ => unimplemented!()
+			TypeKind::Scalar { loc } => Some(loc),
+			_ => None
 		}
 	}
 
@@ -537,7 +598,7 @@ impl Type {
 	}
 
 	pub fn seq(start: Type, continuation: Vec <String>) -> Self {
-		let start_idx = match start.as_scalar_loc() {
+		let start_idx = match start.as_scalar_loc().unwrap() {
 			TypeKindScalarLocation::Global { index } => *index,
 			_ => unimplemented!()
 		};
@@ -552,6 +613,27 @@ impl Type {
 			Self::raw().len() - 1
 		};
 		Self::from_kind(TypeKind::Scalar { loc: TypeKindScalarLocation::Global { index } })
+	}
+
+	pub fn add_new_raw_alias(mother: Option <&TypeKindScalarLocation>, name: String) -> TypeKindScalarLocation {
+		let list = TypeKindScalarLocation::get_list_of_raw_subtypes_for_mother_ty(mother);
+		let index = list.len();
+		list.push(RawType::Alias {
+			name,
+			// Will be replaced soon
+			to: Type::UNIT_TUPLE
+		});
+
+		if let Some(mother) = mother {
+			TypeKindScalarLocation::AssociatedItem {
+				mother: Box::new(mother.clone()),
+				index
+			}
+		} else {
+			TypeKindScalarLocation::Global {
+				index
+			}
+		}
 	}
 
 	pub const fn from_kind(kind: TypeKind) -> Self {
@@ -598,9 +680,9 @@ impl BakedType {
 		}
 	}
 
-	pub fn alias(loc: TypeKindScalarLocation) -> Self {
+	pub fn seq_alias(loc: TypeKindScalarLocation) -> Self {
 		Self {
-			kind: BakedTypeKind::Alias(loc),
+			kind: BakedTypeKind::SeqAlias(loc),
 			// Will be replaced soon afterwards
 			llvm_type: unsafe { LLVMVoidTypeInContext(llvm_context()) }
 		}
@@ -610,7 +692,8 @@ impl BakedType {
 		match &self.kind {
 			BakedTypeKind::Builtin(builtin) => BUILTIN_TYPES[*builtin].name.to_string(),
 			BakedTypeKind::Ordinary(ord) => ord.name.to_string(),
-			BakedTypeKind::Alias(alias) => alias.name()
+			BakedTypeKind::SeqAlias(alias) => alias.name(),
+			BakedTypeKind::FullAlias { name, .. } => name.clone()
 		}
 	}
 }
@@ -619,7 +702,11 @@ impl BakedType {
 pub enum BakedTypeKind {
 	Builtin(usize),
 	Ordinary(TypeDef),
-	Alias(TypeKindScalarLocation)
+	SeqAlias(TypeKindScalarLocation),
+	FullAlias {
+		name: String,
+		to: Type
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -629,6 +716,10 @@ pub enum RawType {
 	Seq {
 		start_idx: usize,
 		continuation: Vec <String>
+	},
+	Alias {
+		name: String,
+		to: Type
 	}
 }
 
@@ -648,7 +739,8 @@ impl RawType {
 		match self {
 			Self::Stub(name) => name.to_string(),
 			Self::Backed(typedef) => typedef.name.to_string(),
-			Self::Seq { start_idx, continuation } => format!("{}.{}", Type::raw()[*start_idx].name(), continuation.join("."))
+			Self::Seq { start_idx, continuation } => format!("{}.{}", Type::raw()[*start_idx].name(), continuation.join(".")),
+			Self::Alias { name, .. } => name.clone()
 		}
 	}
 
