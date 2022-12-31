@@ -239,11 +239,19 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			fun,
 			var_index
 		} => {
-			let fun = fun.fun(stmts);
 			if is_lvalue {
 				panic!("fun args cannot be mutable; expected an lvalue")
 			}
-			unsafe { LLVMGetParam(fun.llvm_fun.unwrap(), *var_index as _) }
+			let is_method = matches!(fun, FunLocation::Method(_));
+			let fun = fun.fun(stmts);
+			unsafe {
+				LLVMGetParam(fun.llvm_fun.unwrap(), if is_method {
+					// `i` goes as a first argument
+					*var_index + 1
+				} else {
+					*var_index
+				} as _)
+			}
 		},
 		ExprKindVariableLocation::Val {
 			fun,
