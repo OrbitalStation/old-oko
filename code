@@ -49,6 +49,7 @@ ty InnerWrapper = x y z w: char
 ty Wrapper
 	x: int
 	y: Alias
+	z: (i32, i32)
 
 	ty RefToWrapper = alias IWrapper
 
@@ -71,5 +72,12 @@ ty Wrapper2 = x: Y.InnerWrapper
     unwrap.& = i.x.x
 
 test -> (i32, i32)
-    $a := (identity 4), identity 4
+    $a := (identity 4), (identity 4)
     return a
+
+ty bool = yes | no
+
+doSmth x: bool = x
+
+ty optional = None | Some i32
+    ID.& = i

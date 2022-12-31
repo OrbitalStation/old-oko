@@ -1,7 +1,8 @@
 use core::fmt::{Debug, Formatter, Result, Write};
-use std::ffi::CString;
+use std::ffi::{c_ulonglong, CString};
 use llvm::core::*;
 use llvm::prelude::*;
+use llvm::target::*;
 use crate::*;
 
 #[derive(Debug, Clone)]
@@ -102,7 +103,7 @@ pub enum TypeDefKind {
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
 	pub name: String,
-	pub data: Vec <Type>
+	pub data: Option <Type>
 }
 
 #[derive(Debug, Clone)]
@@ -530,6 +531,10 @@ impl Type {
 
 	pub fn is_arithmetic(&self) -> bool {
 		self.is_signed() || self.is_unsigned() || matches!(self.kind, TypeKind::Integer)
+	}
+
+	pub fn size(&self) -> c_ulonglong {
+		unsafe { LLVMABISizeOfType(LLVMGetModuleDataLayout(llvm_module()), self.llvm_type(false)) }
 	}
 
 	pub fn llvm_type(&self, is_needed_to_do_reassign: bool) -> LLVMTypeRef {

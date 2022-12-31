@@ -49,7 +49,7 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 
 fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 	// At this point `bake_types()` has already created the type name
-	// but has not set the body, so that's what we gonna do here
+	// but has not done the rest, so that's what we gonna do here
 
 	match &mut baked.kind {
 		BakedTypeKind::Ordinary(typedef) => {
@@ -59,7 +59,19 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
 				},
 				TypeDefKind::Opaque => { /* ignore */ }
-				_ => todo!("Enum")
+				TypeDefKind::Enum { variants } => {
+					let biggest_field_size = variants.iter().map(|x| x.data.as_ref().map(|x| x.size()).unwrap_or(0)).max().unwrap();
+					unsafe {
+						let byte = LLVMInt8TypeInContext(llvm_context());
+						let tag = byte;
+						let mut fields = if biggest_field_size == 0 {
+							vec![tag]
+						} else {
+							vec![tag, LLVMArrayType(byte, biggest_field_size as _)]
+						};
+						LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0)
+					};
+				}
 			}
 
 			let baked = match &mut typedef.subtypes {

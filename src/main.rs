@@ -25,7 +25,7 @@ fn main() {
 
     transpile_statements_into_llvm(&mut stmts);
 
-    unsafe { llvm_sys::core::LLVMDumpModule(llvm_module()) }
+    unsafe { llvm::core::LLVMDumpModule(llvm_module()) }
 
     drop_llvm_builder();
     drop_llvm_module();

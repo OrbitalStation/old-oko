@@ -204,7 +204,7 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule typedef_enum_variant(mother_ty: &Type) -> EnumVariant
-		= name:ident() _ data:ty(Some(mother_ty)) ** __
+		= name:ident() _ data:ty(Some(mother_ty))?
 	{ EnumVariant { name, data } }
 
 	rule typedef_inline_enum(mother_ty: &Type) -> TypeDefKind = _ "=" _ variants:(typedef_enum_variant(mother_ty) ++ (_ "|" _)) nl() {
