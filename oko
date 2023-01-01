@@ -168,7 +168,8 @@ ty Coin
 	Quarter
 
 valueInCents coin: Coin = choose coin
-	Penny => println "A lucky penny!"
+	Penny => block
+	    println "A lucky penny!"
 		1
 	Nickel => 5
 	Dime => 10

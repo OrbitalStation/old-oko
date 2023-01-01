@@ -1,6 +1,6 @@
-use oko::*;
-
 extern crate llvm_sys as llvm;
+
+use oko::*;
 
 fn main() {
     create_llvm_context();

@@ -19,6 +19,13 @@
     ```
     I.e. no full-path qualifiers. Very cool!
     It shall also extend further than just enums. You get the point.
+    For example, string literals are a form of this macro. `"Hi"`
+    Macros of this type should also divide into strong and weak ones -
+    Strong might be used anywhere(literals), whilst weak can be used
+    Only where their type is expected.
+    More examples of strong:
+        <li>tuples(a, b)</li>
+        <li>arrays([1 2 3 4])</li>
 * Add `mutable` attribute for fields of struct that will allow modifying
     them through a shared reference; should be highly unsafe
 * Generics in functions and structs are found in this way:

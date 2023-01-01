@@ -58,7 +58,10 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 					let mut fields = fields.iter().map(|x| x.ty.llvm_type(false)).collect::<Vec <_>>();
 					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
 				},
-				TypeDefKind::Opaque => { /* ignore */ }
+				TypeDefKind::Opaque => {
+					let mut fields = vec![];
+					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), 0, 0) }
+				}
 				TypeDefKind::Enum { variants } => {
 					let biggest_field_size = variants.iter().map(|x| x.data.as_ref().map(|x| x.size()).unwrap_or(0)).max().unwrap();
 					unsafe {

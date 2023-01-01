@@ -291,7 +291,7 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			}
 		},
 		ExprKindVariableLocation::IInMethod { method } => {
-			let fun: &FunDef = FunLocation::Method(method.clone()).fun(stmts);
+			let fun = FunLocation::Method(method.clone()).fun(stmts);
 			unsafe { LLVMGetParam(fun.llvm_fun.unwrap(), 0) }
 		}
 	}

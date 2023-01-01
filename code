@@ -1,2 +1,15 @@
-ty optional = opaque
-    unwrapOr.& default: i32 = default
+puts s: *u8 -> i32 = extern
+
+pass = ()
+
+ty ExampleType = opaque
+
+ty std = opaque
+	ty mem = opaque
+		forget.* i: ExampleType = pass
+
+ty ManuallyDrop
+	value: ExampleType
+
+	drop.! = std.mem.forget i.value
+
