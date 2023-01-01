@@ -12,4 +12,3 @@ ty ManuallyDrop
 	value: ExampleType
 
 	drop.! = std.mem.forget i.value
-

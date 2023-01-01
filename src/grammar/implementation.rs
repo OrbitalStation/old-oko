@@ -117,7 +117,7 @@ peg::parser! { grammar okolang() for str {
 		Type::meet_new_raw_scalar(mother, name.clone(), Some(TypeDef {
 			name,
 			// Will be replaced
-			kind: TypeDefKind::Opaque,
+			kind: TypeDefKind::Enum { variants: vec![] },
 			methods: vec![],
 			subtypes: TypeList::Raw(vec![])
 		}))
@@ -168,15 +168,11 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule type_definition_body(mother_ty: &Type) -> TypeDefKind = kind:(
-		typedef_opaque()
-		/ typedef_inline_struct(mother_ty)
+		typedef_inline_struct(mother_ty)
 		/ typedef_inline_enum(mother_ty)
 		/ typedef_wide_enum(mother_ty)
 		/ typedef_wide_struct(mother_ty)
 	) { kind }
-
-	rule typedef_opaque() -> TypeDefKind
-		= _ "=" _ "opaque" nl() { TypeDefKind::Opaque }
 
 	rule typedef_struct_field(mother_ty: &Type) -> TypedefStructFieldRuleReturn
 		= names:ident() ++ __ _ ":" _ ty:ty(Some(mother_ty))

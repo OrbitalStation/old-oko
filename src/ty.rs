@@ -95,9 +95,7 @@ pub enum TypeDefKind {
 	},
 	Struct {
 		fields: Vec <StructField>
-	},
-	/// Effectively a struct or enum with no fields; an empty type
-	Opaque
+	}
 }
 
 #[derive(Debug, Clone)]

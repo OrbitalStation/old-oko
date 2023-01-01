@@ -58,14 +58,18 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
 					let mut fields = fields.iter().map(|x| x.ty.llvm_type(false)).collect::<Vec <_>>();
 					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
 				},
-				TypeDefKind::Opaque => {
-					let mut fields = vec![];
-					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), 0, 0) }
-				}
-				TypeDefKind::Enum { variants } => {
-					let biggest_field_size = variants.iter().map(|x| x.data.as_ref().map(|x| x.size()).unwrap_or(0)).max().unwrap();
-					unsafe {
-						let byte = LLVMInt8TypeInContext(llvm_context());
+				TypeDefKind::Enum { variants } => unsafe {
+					let byte = LLVMInt8TypeInContext(llvm_context());
+					if variants.len() == 1 {
+						let data = variants[0].data.as_ref().map(|x| x.size()).unwrap_or(0);
+						let mut ty = if data == 0 {
+							vec![]
+						} else {
+							vec![LLVMArrayType(byte, data as _)]
+						};
+						LLVMStructSetBody(baked.llvm_type, ty.as_mut_ptr(), ty.len() as _, 0)
+					} else {
+						let biggest_field_size = variants.iter().map(|x| x.data.as_ref().map(|x| x.size()).unwrap_or(0)).max().unwrap();
 						let tag = byte;
 						let mut fields = if biggest_field_size == 0 {
 							vec![tag]
