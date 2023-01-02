@@ -21,8 +21,8 @@ ty result = Ok T | Err E
 		Ok value => value
 		Err error => pred error
 
-* Enum of two values `yes` and `no`
-ty bool = yes | no
+* Enum of two values `Yes` and `No`
+ty bool = Yes | No
 
 idea Iterator
 	* An associated type
@@ -36,14 +36,28 @@ idea Iterator
 	* fn isExhausted(&self) -> bool;
 	isExhausted.& -> bool
 
-* Each structural type automatically creates
-* 	a default method fabrik, which can be accessed via
-*	`Type.new`, i.e. `Filter.new` in this case
-* By-hand definition of this method would be(in this case):
-*	ty Filter
-*		...
-*       * `.*` at the end means this is a static method
-*		new.* iter: I, pred: P -> Y = <...>
+* The keyword `ty` creates an enum type.
+* Variants of such a type may contain tuple values,
+*   e.g. `ty optional = None | Some T`,
+*   may contain fields, e.g. `ty Position = Global | Local place: Place`
+*   or not contain anything at all, e.g. `ty bool = Yes | No`
+* It is possible to not specify a variant name, in that case it defaults to `new`:
+*   ty Filter = iter: I + pred: P
+* is roughly equivalent to
+*   ty Filter = new iter: I + pred: P
+* A variant of an enum can be constructed like this: `bool.yes`, `Filter.new` with
+*   arguments next if any data was attached, i.e. `Filter.new <expr of type I> <expr of type P>`
+*
+* Why should you omit defining `new` manually?
+*   The answer is that non-uppercase variants cannot be parsed to prevent ambiguity in cases such as
+*   `ty Point = x y: i32`.
+*   However there are no such restrictions on the attached data names
+*
+* If an enum has one variant, then it is possible to access its attached data through
+*   a dot-notation, i.e. `Filter.iter` or `Filter.pred`
+*
+* Tuples are also instances of enums with default variant `new`
+*
 * Also, those `I` and `P` are generics.
 * If a single uppercase letter is met where a type was expected,
 *   it is automatically added to generics list(if it's not here already, of course)
@@ -91,7 +105,7 @@ where Y: Iterator
 impl Sum :: I
 	* Takes `i` by-value(Rust's `self`)
 	sum.! I -> I.Item
-		$s := I.Item.DEFAULT
+		$s = I.Item.DEFAULT
 		for e in i do s += e
 		return s
 where
@@ -101,7 +115,7 @@ where
 * `value |> func args` is equivalent to
 * `func value args`
 * This operator exists to make the code clearer and cleaner
-eulerTask1 = Filter.new 0..1000 λx: x % 3 == 0 or x % 5 == 0 |> sum |> println
+eulerTask1 = Filter.new 0..1000 { it % 3 == 0 or it % 5 == 0 } |> sum |> println
 
 * Hello, world!
 println "Hello, world!"
@@ -112,7 +126,7 @@ use std.cmp.Ordering.*
 
 println "Guess the number!"
 
-secretNumber := getRandom 1..=100
+secretNumber = getRandom 1..=100
 
 loop
 	println "Please input your guess"
@@ -125,27 +139,26 @@ loop
 	*	so how does it work?
 	* This works because `!` type implements
 	*	implicit cast to any other type
-	guess := input |> trim |> parse::u32 |> or λ...: continue
+	guess = input.trim.parse::u32.or { continue }
 
 	* Inside a string literal `$` and a name following it
 	* 	inserts the value of a variable into
 	* Duplicate it to use `$` as a character - `$$`
 	println "You guessed: $guess"
 
-	choose cmp guess secretNumber
+	choose secretNumber.cmp guess
 		Less => println "Too small!"
 		Greater => println "Too big!"
 		Equal => println "You win!"
 			break
 
 * Rectangle
-
 ty Rectangle = width height: u32
 	square.* size: u32 = Y.new size size
 
 	area.& = i.width * i.height
 
-rect1 := Rectangle.new 30 50
+rect1 = Rectangle.new 30 50
 
 println "rect1 is $rect1"
 
@@ -177,7 +190,7 @@ valueInCents coin: Coin = choose coin
 
 
 * Double each value
-([1 2 3 4].iter.map λx: x × 2).collect::Vec i32
+([1 2 3 4].iter.map { it × 2 }).collect::Vec i32
 
 * Sum all values
 [1 2 3 4].iter.sum
@@ -198,3 +211,11 @@ impl Map I M :: Iterator
 where
 	I: Iterator
 	M: λI.Item -> U
+
+* 1 2 3 4 ... 999 1000
+(1..=1000).iter.map { println "$it" }.consume
+
+* 1 2 3 4 ... 999 1000
+(1..=1000).iter.map {
+    println "$it"
+}.consume

@@ -68,6 +68,26 @@
     *   which does the above thing
     sayHello lazy &complexCalculations
     ```
-* Types are created by `TypeName.new`, but there should be an
-    attribute that would replace that `new` static method
-    with a `typeName` global function. Would be cool :>
+
+* Switch meaning of `=` and `:=` in variables -- `=` would define a new
+    variable, and `:=` will assign a value to it.
+  Static variables will not be confused with functions because
+    those variables require keyword `statik`.
+  The only place where ambiguity might actually happen
+    is in fun stmt context because `a = b` may mean both
+    a variable `a` with the value of `b` or a function `a`
+    that returns `b`. In these cases the preference is given
+    to the assumption of a variable.
+* Function pointer types are defined with λ, whilst
+    lambdas themselves in Kotlin-style brackets -- `{ ... }`
+* If some expr continues on the next line wih an extra tab it is
+    treated as if it was on one line, i.e.
+    ```
+    binkie.winkie.dinkie.tinkie.pinkie
+    * is treated the same as
+    binkie.
+        winkie.
+        dinkie
+        .tinkie
+        .pinkie
+    ```

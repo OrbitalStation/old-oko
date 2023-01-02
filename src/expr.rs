@@ -220,7 +220,7 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt], fun_
 
 fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
 	unsafe {
-		let tuple_type = match Type::meet_new_tuple(values.iter().map(|x| x.ty.clone()).collect()).kind {
+		let tuple_type = match Type::tuple(values.iter().map(|x| x.ty.clone()).collect()).kind {
 			TypeKind::Tuple { index } => Type::tuple_list()[index].llvm_type,
 			_ => unreachable!()
 		};
@@ -243,11 +243,15 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 				panic!("fun args cannot be mutable; expected an lvalue")
 			}
 			let is_method = matches!(fun, FunLocation::Method(_));
-			let fun = fun.fun(stmts);
+			let def = fun.fun(stmts);
 			unsafe {
-				LLVMGetParam(fun.llvm_fun.unwrap(), if is_method {
-					// `i` goes as a first argument
-					*var_index + 1
+				LLVMGetParam(def.llvm_fun.unwrap(), if is_method {
+					if !matches!(fun.method().kind, AssociatedMethodKind::Static) {
+						// `i` goes as a first argument
+						*var_index + 1
+					} else {
+						*var_index
+					}
 				} else {
 					*var_index
 				} as _)

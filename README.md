@@ -8,15 +8,15 @@
 
 ## Types definition
 
-### Enums
-
-#### Short form
+### Short form
 
 `ty bool = yes | no`
 
 `ty optional = None | Some T`
 
-#### Long form
+`ty Filter = iter: I + pred: P`
+
+### Long form
 
 ```
 ty bool
@@ -30,23 +30,12 @@ ty optional
     Some T
 ```
 
-### Structs
-
-#### Short form
-
-`ty Filter = iter: Iter + pred: Pred`
-
-#### Long form
 
 ```
 ty Filter
-    iter: Iter
-    pred: Pred
+    iter: I
+    pred: P
 ```
-
-### Opaques
-
-`ty Name = opaque`
 
 ### Type aliases
 

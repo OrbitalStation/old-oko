@@ -79,7 +79,7 @@ peg::parser! { grammar okolang() for str {
 			}
 		}
 		/ "[" _ ty:__ty(existing, mother_ty) __ "x" __ num:$(digit()+) _ "]" { Type::array(ty, num) }
-		/ "(" _ types:(__ty(existing, mother_ty) ** (_ "," _)) _ ("," _)? ")" { Type::meet_new_tuple(types) }
+		/ "(" _ types:(__ty(existing, mother_ty) ** (_ "," _)) _ ("," _)? ")" { Type::tuple(types) }
 		/ mutable:__ty_mut_ref() _ ty:__ty(existing, mother_ty) { Type::reference(ty, mutable) }
 
 	rule __ty(existing: bool, mother_ty: Option <&Type>) -> Type
@@ -117,7 +117,7 @@ peg::parser! { grammar okolang() for str {
 		Type::meet_new_raw_scalar(mother, name.clone(), Some(TypeDef {
 			name,
 			// Will be replaced
-			kind: TypeDefKind::Enum { variants: vec![] },
+			variants: vec![],
 			methods: vec![],
 			subtypes: TypeList::Raw(vec![])
 		}))
@@ -151,7 +151,7 @@ peg::parser! { grammar okolang() for str {
 
 	rule type_definition(mother: Option <&TypeKindScalarLocation>) -> TypeKindScalarLocation
 		= x:__type_alias_definition(mother) { x }
-		/ "ty" __ ty:__type_definition_add(mother) kind:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
+		/ "ty" __ ty:__type_definition_add(mother) variants:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
 	{
 		let loc = ty.as_scalar_loc().unwrap();
 
@@ -162,15 +162,15 @@ peg::parser! { grammar okolang() for str {
 			AssociatedItem::Method(x) => Some(x),
 			_ => None
 		}).collect();
-		typedef.kind = kind;
+		typedef.variants = variants;
 
 		loc.clone()
 	}
 
-	rule type_definition_body(mother_ty: &Type) -> TypeDefKind = kind:(
-		typedef_inline_struct(mother_ty)
-		/ typedef_inline_enum(mother_ty)
+	rule type_definition_body(mother_ty: &Type) -> Vec <EnumVariant> = kind:(
+		typedef_inline_enum(mother_ty)
 		/ typedef_wide_enum(mother_ty)
+		/ typedef_inline_struct(mother_ty)
 		/ typedef_wide_struct(mother_ty)
 	) { kind }
 
@@ -183,40 +183,69 @@ peg::parser! { grammar okolang() for str {
 		})
 	}
 
-	rule typedef_inline_struct(mother_ty: &Type) -> TypeDefKind = _ "=" _ fields:(typedef_struct_field(mother_ty) ++ (_ "+" _)) nl() {
-		TypeDefKind::Struct {
-			fields: fields.into_iter().flatten().collect()
-		}
+	rule typedef_struct_fields(mother_ty: &Type) -> Vec <StructField> = x:typedef_struct_field(mother_ty) ++ (_ "+" _) {
+		x.into_iter().flatten().collect()
+	}
+
+	rule typedef_inline_struct(mother_ty: &Type) -> Vec <EnumVariant> = _ "=" _ fields:(typedef_struct_field(mother_ty) ++ (_ "+" _)) nl() {
+		TypeDef::from_fields(fields)
 	}
 
 	rule typedef_wide_struct_field(mother_ty: &Type) -> TypedefStructFieldRuleReturn
 		= "\t" v:typedef_struct_field(mother_ty) nl()
 	{ v }
 
-	rule typedef_wide_struct(mother_ty: &Type) -> TypeDefKind = nl() fields:typedef_wide_struct_field(mother_ty)+ {
-		TypeDefKind::Struct {
-			fields: fields.into_iter().flatten().collect()
+	rule typedef_wide_struct(mother_ty: &Type) -> Vec <EnumVariant> = nl() fields:typedef_wide_struct_field(mother_ty)+ {
+		TypeDef::from_fields(fields)
+	}
+
+	rule __uppercased_ident() -> String = i:ident() {?
+		if i.chars().next().unwrap().is_uppercase() {
+			Ok(i)
+		} else {
+			Err("an uppercase ident")
 		}
 	}
 
-	rule typedef_enum_variant(mother_ty: &Type) -> EnumVariant
-		= name:ident() _ data:ty(Some(mother_ty))?
+	rule fail_on_true(should_fail: bool) = quiet!{""} {?
+		if should_fail {
+			Err("")
+		} else {
+			Ok(())
+		}
+	}
+
+	rule __enum_variant_attached_data_fields_expected1 <T> (x: rule <T>, tabs: bool)
+		= x() {? if tabs { Ok(()) } else { Err("") } }
+		/ "" {? if !tabs { Ok(()) } else { Err("") } }
+
+	rule __enum_variant_attached_data_fields_tabs2(tabs: bool)
+		= "\t" __enum_variant_attached_data_fields_expected1(<"\t">, tabs)
+
+	rule __enum_variant_attached_data_field(mother_ty: &Type, tabs: bool) -> TypedefStructFieldRuleReturn
+		= __enum_variant_attached_data_fields_tabs2(tabs) fields:typedef_struct_field(mother_ty)
+	{ fields }
+
+	rule __enum_variant_attached_data_fields(mother_ty: &Type, tabs: bool) -> Vec <StructField>
+		= fields:__enum_variant_attached_data_field(mother_ty, tabs) ++ nl()
+	{ fields.into_iter().flatten().collect() }
+
+	rule __enum_variant_attached_data(mother_ty: &Type, is_inline: bool) -> TypeVariantAttachedData
+		= __ fields:typedef_struct_fields(mother_ty) { TypeVariantAttachedData::Struct { fields, llvm_type: None } }
+		/ __ tuple:ty(Some(mother_ty)) ++ __ { TypeVariantAttachedData::Tuple(Type::tuple(tuple)) }
+		/ fail_on_true(is_inline) nl() fields:__enum_variant_attached_data_fields(mother_ty, !is_inline) { TypeVariantAttachedData::Struct { fields, llvm_type: None } }
+		/ "" { TypeVariantAttachedData::None }
+
+	rule __typedef_enum_variant(mother_ty: &Type, is_inline: bool) -> EnumVariant
+		= __enum_variant_attached_data_fields_expected1(<"\t">, !is_inline) name:__uppercased_ident() data:__enum_variant_attached_data(mother_ty, is_inline)
 	{ EnumVariant { name, data } }
 
-	rule typedef_inline_enum(mother_ty: &Type) -> TypeDefKind = _ "=" _ variants:(typedef_enum_variant(mother_ty) ++ (_ "|" _)) nl() {
-		TypeDefKind::Enum {
-			variants
-		}
+	rule typedef_inline_enum(mother_ty: &Type) -> Vec <EnumVariant> = _ "=" _ variants:__typedef_enum_variant(mother_ty, true) ++ (_ "|" _) nl() {
+		variants
 	}
 
-	rule typedef_wide_enum_variant(mother_ty: &Type) -> EnumVariant
-		= "\t" v:typedef_enum_variant(mother_ty) nl()
-	{ v }
-
-	rule typedef_wide_enum(mother_ty: &Type) -> TypeDefKind = nl() variants:typedef_wide_enum_variant(mother_ty)+ {
-		TypeDefKind::Enum {
-			variants
-		}
+	rule typedef_wide_enum(mother_ty: &Type) -> Vec <EnumVariant> = nl() variants:__typedef_enum_variant(mother_ty, false) ++ nl() nl()? {
+		variants
 	}
 
 	pub(in crate) rule __expr1_variable(input: ParseFunBodyInput) -> Expr = name:ident() {?
@@ -461,7 +490,7 @@ peg::parser! { grammar okolang() for str {
 			core::mem::replace(&mut tuple[0], Expr::UNIT_TUPLE)
 		} else {
 			Expr {
-				ty: Type::meet_new_tuple(tuple.iter().map(|x| x.ty.clone()).collect()),
+				ty: Type::tuple(tuple.iter().map(|x| x.ty.clone()).collect()),
 				kind: ExprKind::Tuple(tuple)
 			}
 		}

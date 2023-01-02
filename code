@@ -1,14 +1,28 @@
-puts s: *u8 -> i32 = extern
+ty Filter
+    iter: i32
+    pred: u8
 
-pass = ()
+    id.& = i
 
-ty ExampleType = opaque
+    getIter.& = i.iter
+    getPred.& = i.pred
 
-ty std = opaque
-	ty mem = opaque
-		forget.* i: ExampleType = pass
+    getIter2.* i: Y = i.getIter
 
-ty ManuallyDrop
-	value: ExampleType
+ty A = Yes | No
+    id.& = i
 
-	drop.! = std.mem.forget i.value
+ty optional = None | Some A
+    id.& = i
+
+ty A2
+    Yes
+    No
+
+    id.& = i
+
+ty optional2
+    None
+    Some A2
+
+    id.& = i

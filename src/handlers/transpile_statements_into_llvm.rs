@@ -7,13 +7,12 @@ use crate::*;
 pub fn transpile_statements_into_llvm(stmts: &mut [Stmt]) {
 	let stmts_ref = &*stmts as *const [Stmt];
 	for tuple in Type::tuple_list() {
-        let mut types = tuple.fields.iter().map(|x| x.llvm_type(false)).collect::<Vec <_>>();
-		unsafe { LLVMStructSetBody(tuple.llvm_type, types.as_mut_ptr(), types.len() as _, 0) };
+        tuple.set_body()
     }
 	for stmt in stmts.iter_mut() {
 		match stmt {
 			Stmt::ExternFun(_) => { /* already done; ignore */ },
-			Stmt::TypeDef(typedef) => create_typedef(unsafe { &*stmts_ref }, typedef.baked().unwrap()),
+			Stmt::TypeDef(typedef) => create_typedef(unsafe { &*stmts_ref }, typedef.baked().unwrap(), ""),
 			Stmt::FunDef(fundef) => create_fundef(unsafe { &*stmts_ref }, fundef)
 		}
 	}
@@ -47,37 +46,54 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 	unsafe { LLVMVerifyFunction(fun, LLVMVerifierFailureAction::LLVMAbortProcessAction); }
 }
 
-fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
+fn create_typedef(stmts: &[Stmt], baked: &mut BakedType, prefix: &str) {
 	// At this point `bake_types()` has already created the type name
 	// but has not done the rest, so that's what we gonna do here
 
 	match &mut baked.kind {
 		BakedTypeKind::Ordinary(typedef) => {
-			match &typedef.kind {
-				TypeDefKind::Struct { fields } => {
-					let mut fields = fields.iter().map(|x| x.ty.llvm_type(false)).collect::<Vec <_>>();
-					unsafe { LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0) }
-				},
-				TypeDefKind::Enum { variants } => unsafe {
+			let subtypes_prefix = if prefix.is_empty() {
+				typedef.name.clone()
+			} else {
+				format!("{prefix}.{}", typedef.name)
+			};
+
+			unsafe {
+				if typedef.variants.len() != 1 {
 					let byte = LLVMInt8TypeInContext(llvm_context());
-					if variants.len() == 1 {
-						let data = variants[0].data.as_ref().map(|x| x.size()).unwrap_or(0);
-						let mut ty = if data == 0 {
-							vec![]
-						} else {
-							vec![LLVMArrayType(byte, data as _)]
-						};
-						LLVMStructSetBody(baked.llvm_type, ty.as_mut_ptr(), ty.len() as _, 0)
-					} else {
-						let biggest_field_size = variants.iter().map(|x| x.data.as_ref().map(|x| x.size()).unwrap_or(0)).max().unwrap();
-						let tag = byte;
-						let mut fields = if biggest_field_size == 0 {
-							vec![tag]
-						} else {
-							vec![tag, LLVMArrayType(byte, biggest_field_size as _)]
-						};
-						LLVMStructSetBody(baked.llvm_type, fields.as_mut_ptr(), fields.len() as _, 0)
+					let biggest_field_size = typedef.variants.iter_mut().map(|x| match &mut x.data {
+						TypeVariantAttachedData::None => 0,
+						TypeVariantAttachedData::Struct { fields, llvm_type } => {
+							let name = format!(".E.{}.{}\0", subtypes_prefix, x.name);
+							let ty = LLVMStructCreateNamed(llvm_context(), name.as_ptr() as _);
+							let mut elems = fields.iter().map(|x| x.ty.llvm_type(false)).collect::<Vec<_>>();
+							LLVMStructSetBody(ty, elems.as_mut_ptr(), elems.len() as _, 0);
+							*llvm_type = Some(ty);
+							// TODO: Replace with size without padding bytes
+							Type::size_of_llvm_type(ty)
+						},
+						// TODO: Replace with size without padding bytes
+						TypeVariantAttachedData::Tuple(tuple) => Type::size_of_llvm_type(tuple.llvm_type(false))
+					}).max().unwrap();
+					let tag = byte;
+					let mut elems = vec![tag];
+					if biggest_field_size != 0 {
+						elems.push(LLVMArrayType(byte, biggest_field_size as _))
+					}
+					LLVMStructSetBody(baked.llvm_type, elems.as_mut_ptr(), elems.len() as _, 0);
+				} else {
+					let mut elems = match &mut typedef.variants[0].data {
+						TypeVariantAttachedData::None => vec![],
+						TypeVariantAttachedData::Tuple(ty) => match &ty.kind {
+							TypeKind::Tuple { index } => Tuple::get(*index).iter().map(|x| x.llvm_type(false)).collect(),
+							_ => unreachable!()
+						},
+						TypeVariantAttachedData::Struct { fields, llvm_type } => {
+							*llvm_type = Some(baked.llvm_type);
+							fields.iter().map(|x| x.ty.llvm_type(false)).collect()
+						}
 					};
+					LLVMStructSetBody(baked.llvm_type, elems.as_mut_ptr(), elems.len() as _, 0)
 				}
 			}
 
@@ -86,7 +102,7 @@ fn create_typedef(stmts: &[Stmt], baked: &mut BakedType) {
                 _ => unreachable!()
             };
 			for ty in baked {
-				create_typedef(stmts, ty)
+				create_typedef(stmts, ty, &subtypes_prefix)
 			}
 
 			for method in &mut typedef.methods {

@@ -27,6 +27,11 @@ impl Tuple {
 		}
 	}
 
+	pub fn set_body(&self) {
+		let mut types = self.fields.iter().map(|x| x.llvm_type(false)).collect::<Vec <_>>();
+		unsafe { LLVMStructSetBody(self.llvm_type, types.as_mut_ptr(), types.len() as _, 0) };
+	}
+
 	pub fn get(index: usize) -> &'static mut Vec <Type> {
 		&mut Type::tuple_list()[index].fields
 	}
@@ -83,25 +88,37 @@ pub struct AssociatedMethod {
 #[derive(Debug, Clone)]
 pub struct TypeDef {
 	pub name: String,
-	pub kind: TypeDefKind,
+	pub variants: Vec <EnumVariant>,
 	pub methods: Vec <AssociatedMethod>,
 	pub subtypes: TypeList
 }
 
+impl TypeDef {
+	pub fn from_fields(fields: Vec <impl Iterator <Item = StructField>>) -> Vec <EnumVariant> {
+		vec![EnumVariant {
+			name: String::from("new"),
+			data: TypeVariantAttachedData::Struct {
+				fields: fields.into_iter().flatten().collect(),
+				llvm_type: None
+			}
+		}]
+	}
+}
+
 #[derive(Debug, Clone)]
-pub enum TypeDefKind {
-	Enum {
-		variants: Vec <EnumVariant>
-	},
+pub enum TypeVariantAttachedData {
+	None,
+	Tuple(Type),
 	Struct {
-		fields: Vec <StructField>
+		fields: Vec <StructField>,
+		llvm_type: Option <LLVMTypeRef>
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
 	pub name: String,
-	pub data: Option <Type>
+	pub data: TypeVariantAttachedData
 }
 
 #[derive(Debug, Clone)]
@@ -422,8 +439,11 @@ impl Type {
 	pub fn get_fields_of_struct(&self) -> Option <&'static Vec <StructField>> {
 		if let TypeKind::Scalar { loc } = &self.kind {
 			match loc.type_def() {
-				Some(x) => if let TypeDefKind::Struct { fields } = &x.kind {
-					Some(fields)
+				Some(x) => if x.variants.len() == 1 {
+					match &x.variants[0].data {
+						TypeVariantAttachedData::Struct { fields, .. } => Some(fields),
+						_ => None
+					}
 				} else {
 					None
 				},
@@ -432,11 +452,6 @@ impl Type {
 		} else {
 			None
 		}
-	}
-
-	#[inline]
-	pub fn is_struct(&self) -> bool {
-		self.get_fields_of_struct().is_some()
 	}
 
 	pub fn is_tuple(&self) -> bool {
@@ -532,7 +547,11 @@ impl Type {
 	}
 
 	pub fn size(&self) -> c_ulonglong {
-		unsafe { LLVMABISizeOfType(LLVMGetModuleDataLayout(llvm_module()), self.llvm_type(false)) }
+		Self::size_of_llvm_type(self.llvm_type(false))
+	}
+
+	pub fn size_of_llvm_type(ty: LLVMTypeRef) -> c_ulonglong {
+		unsafe { LLVMABISizeOfType(LLVMGetModuleDataLayout(llvm_module()), ty) }
 	}
 
 	pub fn llvm_type(&self, is_needed_to_do_reassign: bool) -> LLVMTypeRef {
@@ -704,7 +723,7 @@ impl Type {
 		}
 	}
 
-	pub fn meet_new_tuple(fields: Vec <Type>) -> Self {
+	pub fn tuple(fields: Vec <Type>) -> Self {
 		if let Some((index, _)) = Self::tuple_list().iter().enumerate().find(|(_, x)| x.fields == fields) {
 			Self::from_kind(TypeKind::Tuple { index })
 		} else {
