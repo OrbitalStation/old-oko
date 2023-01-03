@@ -296,8 +296,14 @@ peg::parser! { grammar okolang() for str {
 		})
 	}
 
-	rule __expr1_fun_call_argument(input: ParseFunBodyInput, remain: usize) -> Vec <Expr>
-		= __ expr:expr(input) next:__expr1_fun_call_argument(input, remain.wrapping_sub(1))?
+	rule __expr1_fun_call_argument_sep(parentheses: bool, is_first: bool)
+		= __ {? if is_first || !parentheses { Ok(()) } else { Err("") } }
+		/ "" {? if is_first { Ok(()) } else { Err("") } }
+		/ _ "," _ {? if !is_first && parentheses { Ok(()) } else { Err("") } }
+
+	rule __expr1_fun_call_argument(input: ParseFunBodyInput, remain: usize, is_with_parentheses: bool, is_first: bool) -> Vec <Expr>
+		// Tuples are not allowed at this location
+		= __expr1_fun_call_argument_sep(is_with_parentheses, is_first) expr:__expr1(input) next:__expr1_fun_call_argument(input, remain.wrapping_sub(1), is_with_parentheses, false)?
 	{?
 		if remain == 0 {
 			Err("expression")
@@ -316,8 +322,16 @@ peg::parser! { grammar okolang() for str {
 		= ty:__expr1_associated_item_prefix(input)? names:ident() ++ (_ "." _)
 	{? get_fun(ty, input, names).ok_or("function call") }
 
+	rule __expr1_fun_call_open_bracket() -> bool
+		= "(" { true }
+		/ "" { false }
+
+	rule __expr1_fun_call_close_bracket(opb: bool)
+		= _ ")" {? if opb { Ok(()) } else { Err("") } }
+		/ "" {? if opb { Err("closing bracket") } else { Ok(()) } }
+
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
-		= i:__expr1_fun_call_helper(input) args:__expr1_fun_call_argument(input, i.2)?
+		= i:__expr1_fun_call_helper(input) opb:__expr1_fun_call_open_bracket() args:__expr1_fun_call_argument(input, i.2, opb, true)? __expr1_fun_call_close_bracket(opb)
 	{?
 		let (fun_loc, fun_def, _, i_of_method) = i;
 
@@ -351,7 +365,7 @@ peg::parser! { grammar okolang() for str {
 	}
 
 	rule __expr1_extern_fun_call(input: ParseFunBodyInput) -> Expr
-		= fun:ident() args:__expr1_fun_call_argument(input, open_option_in_arg!(input.extern_fun_by_name(&fun)).1.args.len())?
+		= fun:ident() opb:__expr1_fun_call_open_bracket() args:__expr1_fun_call_argument(input, open_option_in_arg!(input.extern_fun_by_name(&fun)).1.args.len(), opb, true)? __expr1_fun_call_close_bracket(opb)
 	{?
 		let (fun_stmt_index, fun) = input.extern_fun_by_name(&fun).ok_or("function call")?;
 		let args = args.unwrap_or(vec![]);

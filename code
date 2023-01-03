@@ -1,28 +1,5 @@
-ty int = alias i32
+add a b: i32 = identity(a) + identity(b)
 
-minusOne = 0 - 1
+identity x: i32 = x
 
-cmp a b: bool -> int
-	return if a == b do 0 else if a do 1 else minusOne
-
-toInt a b: bool -> int
-    return if a
-        if b
-            3
-        else
-            2
-    else
-        if b
-            1
-        else
-            0
-
-fib n: u64 -> u64 = if n == 0 or n == 1 do 1 else (fib n - 1) + fib n - 2
-
-fib2 n: u64 -> u64
-	if n == 0
-		if n == 1
-			return 1
-	a := fib n - 1
-	b := fib n - 2
-	return a + b
+test a b: i32 = add(a, b)

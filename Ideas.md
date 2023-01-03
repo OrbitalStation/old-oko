@@ -91,8 +91,6 @@
         .tinkie
         .pinkie
     ```
-* Add possibility to call functions like `fun(arg1 arg2)`, i.e.
-    with extra parentheses
 * (This one is questionable)
     Add shared reference independence, i.e. ability to omit references
     whenever possible, such as field accessing - 

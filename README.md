@@ -119,6 +119,13 @@ restricted with lifetimes and usually allow implicit stuff
 `x = 3`
 `x = y + z`
 
+## Function call
+`<fn name> <arg1> <arg2> ...`
+`add 3 4`
+
+`<fn name>(<arg1>, <arg2>, ...)`
+`add(3, 4)`
+
 ## Shorthand assignment
 `x += 3`
 `x -= 2`
