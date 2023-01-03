@@ -7,25 +7,27 @@ pub fn bake_types() {
         Type::meet_new_raw_scalar(None, builtin.name.to_string(), None);
     }
 
-    let types = core::mem::replace(match Type::type_list() {
+    let types = core::mem::replace(Type::type_list(), TypeList::Raw(vec![]));
+
+    let raw_types = match &types {
         TypeList::Raw(raw) => raw,
         _ => unimplemented!()
-    }, vec![]);
+    };
 
     let mut baked_locs = VecDeque::new();
-    for i in &types {
+    for i in raw_types {
         if let RawType::Seq {
-            start_idx,
+            start,
             continuation
         } = i {
-            let mut cur = types[*start_idx].unaliasize_to_self(&types);
-            let mut loc = TypeKindScalarLocation::Global { index: *start_idx };
+            let mut cur = start.raw_with_custom_global_list(&types).and_then(|x| x.unaliasize_to_self(raw_types));
+            let mut loc = start.clone();
             for part in continuation {
                 match cur {
                     Some(RawType::Backed(backed)) => match &backed.subtypes {
                         TypeList::Raw(raw) => match raw.iter().enumerate().find(|(_, x)| x.name() == *part) {
                             Some((index, x)) => {
-                                cur = x.unaliasize_to_self(&types);
+                                cur = x.unaliasize_to_self(&raw_types);
                                 loc = TypeKindScalarLocation::AssociatedItem {
                                     index,
                                     mother: Box::new(loc),
@@ -42,7 +44,10 @@ pub fn bake_types() {
         }
     }
 
-    let types = types.into_iter().map(|x| handle_raw_type(x, String::new(), &mut baked_locs)).collect();
+    let types = match types {
+        TypeList::Raw(raw) => raw,
+        _ => unimplemented!()
+    }.into_iter().map(|x| handle_raw_type(x, String::new(), &mut baked_locs)).collect();
 
     *Type::type_list() = TypeList::Baked(types);
 

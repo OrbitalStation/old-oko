@@ -336,6 +336,7 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 
 			LLVMPositionBuilderAtEnd(llvm_builder(), yes_bb);
 			let (yes_terminated, yes_val) = transpile_complex_body(yes, &mut HashMap::new(), stmts, fun_name, true);
+			let yes_val_bb = LLVMGetInsertBlock(llvm_builder());
 			LLVMPositionBuilderAtEnd(llvm_builder(), yes_bb);
 			if LLVMGetBasicBlockTerminator(yes_bb).is_null() {
 				LLVMBuildBr(llvm_builder(), endif_bb);
@@ -346,6 +347,7 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 
 			LLVMPositionBuilderAtEnd(llvm_builder(), no_bb);
 			let (no_terminated, no_val) = transpile_complex_body(no, &mut HashMap::new(), stmts, fun_name, true);
+			let no_val_bb = LLVMGetInsertBlock(llvm_builder());
 			LLVMPositionBuilderAtEnd(llvm_builder(), no_bb);
 			if LLVMGetBasicBlockTerminator(no_bb).is_null() {
 				LLVMBuildBr(llvm_builder(), endif_bb);
@@ -363,7 +365,7 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 			let result = if *ty != Type::UNIT_TUPLE {
 				let phi = LLVMBuildPhi(llvm_builder(), ty.llvm_type(false), b"\0".as_ptr() as _);
 				let mut values = vec![yes_val.unwrap(), no_val.unwrap()];
-				let mut blocks = vec![yes_bb, no_bb];
+				let mut blocks = vec![yes_val_bb, no_val_bb];
 				LLVMAddIncoming(phi, values.as_mut_ptr(), blocks.as_mut_ptr(), 2);
 				phi
 			} else {

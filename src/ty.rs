@@ -246,6 +246,40 @@ impl TypeKindScalarLocation {
 		}
 	}
 
+	pub fn get_list_and_index_with_custom_global_list <'a> (&self, list: &'a TypeList) -> (&'a TypeList, usize) {
+		match self {
+			Self::Global { index } => (list, *index),
+			Self::AssociatedItem { index, mother } => (&mother.type_def_with_custom_global_list(list).unwrap().subtypes, *index)
+		}
+	}
+
+	pub fn type_def_with_custom_global_list <'a> (&self, global_list: &'a TypeList) -> Option <&'a TypeDef> {
+		let (list, index) = self.get_list_and_index_with_custom_global_list(global_list);
+
+		match list {
+			TypeList::Baked(baked) => match &baked[index].kind {
+				BakedTypeKind::Ordinary(def) => Some(def),
+				BakedTypeKind::SeqAlias(alias) => return alias.type_def_with_custom_global_list(list),
+				BakedTypeKind::FullAlias { to, ..} => return to.as_scalar_loc()?.type_def_with_custom_global_list(list),
+				_ => None
+			},
+			TypeList::Raw(raw) => match &raw[index] {
+				RawType::Backed(backed) => Some(backed),
+				RawType::Alias { to, .. } => return to.as_scalar_loc()?.type_def_with_custom_global_list(list),
+				_ => None
+			}
+		}
+	}
+
+	pub fn raw_with_custom_global_list <'a> (&self, list: &'a TypeList) -> Option <&'a RawType> {
+		let (list, index) = self.get_list_and_index_with_custom_global_list(list);
+
+		match list {
+			TypeList::Raw(raw) => Some(&raw[index]),
+			_ => None
+		}
+	}
+
 	pub fn raw(&self) -> Option <&'static mut RawType> {
 		let (list, index) = self.get_list_and_index();
 
@@ -685,12 +719,8 @@ impl Type {
 	}
 
 	pub fn seq(start: Type, continuation: Vec <String>) -> Self {
-		let start_idx = match start.as_scalar_loc().unwrap() {
-			TypeKindScalarLocation::Global { index } => *index,
-			_ => unimplemented!()
-		};
 		let ty = RawType::Seq {
-			start_idx,
+			start: start.as_scalar_loc().unwrap().clone(),
 			continuation
 		};
 		let index = if let Some((idx, _)) = Self::raw().iter().enumerate().find(|(_, ty2)| ty2.is_same_seq(&ty)) {
@@ -811,7 +841,7 @@ pub enum RawType {
 	Stub(String),
 	Backed(TypeDef),
 	Seq {
-		start_idx: usize,
+		start: TypeKindScalarLocation,
 		continuation: Vec <String>
 	},
 	Alias {
@@ -823,9 +853,9 @@ pub enum RawType {
 impl RawType {
 	pub fn is_same_seq(&self, other: &Self) -> bool {
 		match self {
-			Self::Seq { start_idx, continuation} => match other {
-				RawType::Seq { start_idx: start_index_b, continuation: continuation_b }
-					=> start_idx == start_index_b && continuation == continuation_b,
+			Self::Seq { start, continuation} => match other {
+				RawType::Seq { start: start_b, continuation: continuation_b }
+					=> start == start_b && continuation == continuation_b,
 				_ => false
 			},
 			_ => false
@@ -849,7 +879,7 @@ impl RawType {
 		match self {
 			Self::Stub(name) => name.to_string(),
 			Self::Backed(typedef) => typedef.name.to_string(),
-			Self::Seq { start_idx, continuation } => format!("{}.{}", Type::raw()[*start_idx].name(), continuation.join(".")),
+			Self::Seq { start, continuation } => format!("{}.{}", start.name(), continuation.join(".")),
 			Self::Alias { name, .. } => name.clone()
 		}
 	}

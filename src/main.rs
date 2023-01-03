@@ -1,6 +1,7 @@
 extern crate llvm_sys as llvm;
 
 use oko::*;
+use std::ffi::CStr;
 
 fn main() {
     create_llvm_context();
@@ -25,7 +26,10 @@ fn main() {
 
     transpile_statements_into_llvm(&mut stmts);
 
-    unsafe { llvm::core::LLVMDumpModule(llvm_module()) }
+	let res = unsafe { llvm::core::LLVMPrintModuleToString(llvm_module()) };
+	let res = unsafe { CStr::from_ptr(res as _) };
+	let res = res.to_str().unwrap();
+    println!("{res}");
 
     drop_llvm_builder();
     drop_llvm_module();

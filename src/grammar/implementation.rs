@@ -222,18 +222,18 @@ peg::parser! { grammar okolang() for str {
 	rule __enum_variant_attached_data_fields_tabs2(tabs: bool)
 		= "\t" __enum_variant_attached_data_fields_expected1(<"\t">, tabs)
 
-	rule __enum_variant_attached_data_field(mother_ty: &Type, tabs: bool) -> TypedefStructFieldRuleReturn
-		= __enum_variant_attached_data_fields_tabs2(tabs) fields:typedef_struct_field(mother_ty)
+	rule __enum_variant_attached_data_field(mother_ty: &Type) -> TypedefStructFieldRuleReturn
+		= __enum_variant_attached_data_fields_tabs2(true) fields:typedef_struct_field(mother_ty)
 	{ fields }
 
-	rule __enum_variant_attached_data_fields(mother_ty: &Type, tabs: bool) -> Vec <StructField>
-		= fields:__enum_variant_attached_data_field(mother_ty, tabs) ++ nl()
+	rule __enum_variant_attached_data_fields(mother_ty: &Type) -> Vec <StructField>
+		= fields:__enum_variant_attached_data_field(mother_ty) ++ nl()
 	{ fields.into_iter().flatten().collect() }
 
 	rule __enum_variant_attached_data(mother_ty: &Type, is_inline: bool) -> TypeVariantAttachedData
 		= __ fields:typedef_struct_fields(mother_ty) { TypeVariantAttachedData::Struct { fields, llvm_type: None } }
 		/ __ tuple:ty(Some(mother_ty)) ++ __ { TypeVariantAttachedData::Tuple(Type::tuple(tuple)) }
-		/ fail_on_true(is_inline) nl() fields:__enum_variant_attached_data_fields(mother_ty, !is_inline) { TypeVariantAttachedData::Struct { fields, llvm_type: None } }
+		/ fail_on_true(is_inline) nl() fields:__enum_variant_attached_data_fields(mother_ty) { TypeVariantAttachedData::Struct { fields, llvm_type: None } }
 		/ "" { TypeVariantAttachedData::None }
 
 	rule __typedef_enum_variant(mother_ty: &Type, is_inline: bool) -> EnumVariant
@@ -466,8 +466,8 @@ peg::parser! { grammar okolang() for str {
 		x:(@) __expr1_bin_op(<"+">, input) y:@ { check2arithmetic(x, y, BinOpType::Add) }
 		x:(@) __expr1_bin_op(<"-">, input) y:@ { check2arithmetic(x, y, BinOpType::Sub) }
 		--
-		x:(@) __expr1_bin_op(<"×">, input) y:@ { check2arithmetic(x, y, BinOpType::Mul) }
-		x:(@) __expr1_bin_op(<"÷">, input) y:@ { check2arithmetic(x, y, BinOpType::Div) }
+		x:(@) __expr1_bin_op(<"*">, input) y:@ { check2arithmetic(x, y, BinOpType::Mul) }
+		x:(@) __expr1_bin_op(<"/">, input) y:@ { check2arithmetic(x, y, BinOpType::Div) }
 		--
 		"*" x:(@) { dereference(x) }
 		--
@@ -544,8 +544,8 @@ peg::parser! { grammar okolang() for str {
 		= lvalue:expr(input) _ "=" _ new:expr(input) { assignment(input, lvalue, new) }
 		/ x:__fun_stmt_assign_short_assign(input, <"+">, BinOpType::Add) { x }
 		/ x:__fun_stmt_assign_short_assign(input, <"-">, BinOpType::Sub) { x }
-		/ x:__fun_stmt_assign_short_assign(input, <"÷">, BinOpType::Div) { x }
-		/ x:__fun_stmt_assign_short_assign(input, <"×">, BinOpType::Mul) { x }
+		/ x:__fun_stmt_assign_short_assign(input, <"/">, BinOpType::Div) { x }
+		/ x:__fun_stmt_assign_short_assign(input, <"*">, BinOpType::Mul) { x }
 
 	rule fun_stmt(input: ParseFunBodyInput) -> (FunStmt, Type)
 		= ret:__fun_stmt_return(input) { ret }

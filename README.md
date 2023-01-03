@@ -126,8 +126,8 @@ restricted with lifetimes and usually allow implicit stuff
 ## Binary operators
 ```
 a + b
-x + y × z
-(x + y) ÷ z
+x + y * z
+(x + y) / z
 q - p
 a == b
 a != b

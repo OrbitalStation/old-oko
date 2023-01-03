@@ -91,3 +91,29 @@
         .tinkie
         .pinkie
     ```
+* Add possibility to call functions like `fun(arg1 arg2)`, i.e.
+    with extra parentheses
+* (This one is questionable)
+    Add shared reference independence, i.e. ability to omit references
+    whenever possible, such as field accessing - 
+    if `a` is of type `&T` and `a.b` is non-copy,
+    it's obvious that `a.b` is not trying to move `b` out
+    of `a`, 
+* Add appending of code right after the function to its body, i.e.
+    ```
+    * So that this code...
+    someFun x: i64 = if x == 0
+        ...
+    else
+        ...
+  
+    * ...would be treated like this
+    someFun x: i64 = block
+        if x == 0
+            ...
+        else
+            ...
+    ```
+* Add `block` expression, which just introduces a new level
+    of indentation
+* Placeholder would be `...` instead of `_` of Rust, Python, etc.

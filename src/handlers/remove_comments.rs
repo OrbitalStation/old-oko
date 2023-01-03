@@ -10,7 +10,7 @@ pub fn remove_comments(mut code: String) -> String {
 
 			let coff = &code[first_non_tab_or_space..];
 
-			if coff.starts_with("* ") {
+			if coff.starts_with("*") && [' ', '\t'].contains(&coff.chars().skip(1).next().unwrap_or(' ')) {
 				// Do not strip off the '\n' as it is needed to correctly determine the line number
 				let end = coff.find('\n').unwrap_or_else(|| code.len() - first_non_tab_or_space);
 				code.drain(first_non_tab_or_space..first_non_tab_or_space + end);

@@ -1,28 +1,28 @@
-ty Filter
-    iter: i32
-    pred: u8
+ty int = alias i32
 
-    id.& = i
+minusOne = 0 - 1
 
-    getIter.& = i.iter
-    getPred.& = i.pred
+cmp a b: bool -> int
+	return if a == b do 0 else if a do 1 else minusOne
 
-    getIter2.* i: Y = i.getIter
+toInt a b: bool -> int
+    return if a
+        if b
+            3
+        else
+            2
+    else
+        if b
+            1
+        else
+            0
 
-ty A = Yes | No
-    id.& = i
+fib n: u64 -> u64 = if n == 0 or n == 1 do 1 else (fib n - 1) + fib n - 2
 
-ty optional = None | Some A
-    id.& = i
-
-ty A2
-    Yes
-    No
-
-    id.& = i
-
-ty optional2
-    None
-    Some A2
-
-    id.& = i
+fib2 n: u64 -> u64
+	if n == 0
+		if n == 1
+			return 1
+	a := fib n - 1
+	b := fib n - 2
+	return a + b
