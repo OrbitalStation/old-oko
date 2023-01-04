@@ -2,7 +2,6 @@ use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
 use core::fmt::{Debug, Formatter, Result};
-use std::collections::HashMap;
 use llvm::LLVMIntPredicate;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -61,7 +60,7 @@ pub enum ExprKindVariableLocation {
 	},
 	Val {
 		fun: FunLocation,
-		line_def: usize
+		idx: usize
 	},
 	AccessField {
 		i: Box <Expr>,
@@ -194,9 +193,9 @@ fn build_literal(lit: &ExprLiteral, ty: &Type) -> LLVMValueRef {
 	}
 }
 
-fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
-	let left = left0.to_llvm_value(stmts, fun_name).0;
-	let right = right0.to_llvm_value(stmts, fun_name).0;
+fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt], fun_name: &str, vals: &mut Vec <VariableInfo>) -> LLVMValueRef {
+	let left = left0.to_llvm_value(stmts, fun_name, vals).0;
+	let right = right0.to_llvm_value(stmts, fun_name, vals).0;
 	let name = b"\0".as_ptr() as _;
 	unsafe {
 		match op {
@@ -218,7 +217,7 @@ fn build_bin_op(left0: &Expr, right0: &Expr, op: BinOpType, stmts: &[Stmt], fun_
 	}
 }
 
-fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
+fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt], fun_name: &str, vals: &mut Vec <VariableInfo>) -> LLVMValueRef {
 	unsafe {
 		let tuple_type = match Type::tuple(values.iter().map(|x| x.ty.clone()).collect()).kind {
 			TypeKind::Tuple { index } => Type::tuple_list()[index].llvm_type,
@@ -227,13 +226,13 @@ fn build_tuple(values: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValue
 		let tuple =  LLVMBuildAlloca(llvm_builder(), tuple_type, b"\0".as_ptr() as _);
 		for (idx, value) in values.into_iter().enumerate() {
 			let elem = LLVMBuildStructGEP(llvm_builder(), tuple, idx as _, b"\0".as_ptr() as _);
-			LLVMBuildStore(llvm_builder(), value.to_llvm_value(stmts, fun_name).0, elem);
+			LLVMBuildStore(llvm_builder(), value.to_llvm_value(stmts, fun_name, vals).0, elem);
 		}
 		tuple
 	}
 }
 
-fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> LLVMValueRef {
+fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue: bool, fun_name: &str, vals: &mut Vec <VariableInfo>) -> LLVMValueRef {
 	match location {
 		ExprKindVariableLocation::FunArg {
 			fun,
@@ -259,10 +258,10 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 		},
 		ExprKindVariableLocation::Val {
 			fun,
-			line_def
+			idx
 		} => {
 			let fun = fun.fun(stmts);
-			let val = fun.vals.get(line_def).unwrap();
+			let val = &fun.vals[*idx];
 			let llvm_value = val.llvm_value.unwrap();
 
 			if !val.init.ty.is_simplistic() {
@@ -280,7 +279,7 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 			field,
 			def
 		} => {
-			let ivalue = i.to_llvm_value(stmts, fun_name).0;
+			let ivalue = i.to_llvm_value(stmts, fun_name, vals).0;
 			let field_val = unsafe { LLVMBuildStructGEP(llvm_builder(), ivalue, *field as _, b"\0".as_ptr() as _) };
 			if !def[*field].ty.is_simplistic() || is_lvalue {
 				// It does not matter whether `is_lvalue` is set or not -
@@ -301,9 +300,9 @@ fn build_variable(location: &ExprKindVariableLocation, stmts: &[Stmt], is_lvalue
 	}
 }
 
-fn build_fun_call(fun: &FunLocation, args: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
+fn build_fun_call(fun: &FunLocation, args: &Vec <Expr>, stmts: &[Stmt], fun_name: &str, vals: &mut Vec <VariableInfo>) -> LLVMValueRef {
 	let fun = fun.fun(stmts);
-	let mut args = args.iter().map(|x| x.to_llvm_value(stmts, fun_name).0).collect::<Vec <_>>();
+	let mut args = args.iter().map(|x| x.to_llvm_value(stmts, fun_name, vals).0).collect::<Vec <_>>();
 	if fun.is_ret_by_value() {
 		unsafe { LLVMBuildCall(llvm_builder(), fun.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 	} else {
@@ -314,16 +313,16 @@ fn build_fun_call(fun: &FunLocation, args: &Vec <Expr>, stmts: &[Stmt], fun_name
 	}
 }
 
-fn build_extern_fun_call(fun_stmt_index: usize, args: &Vec <Expr>, stmts: &[Stmt], fun_name: &str) -> LLVMValueRef {
+fn build_extern_fun_call(fun_stmt_index: usize, args: &Vec <Expr>, stmts: &[Stmt], fun_name: &str, vals: &mut Vec <VariableInfo>) -> LLVMValueRef {
 	let fun = match &stmts[fun_stmt_index] {
 		Stmt::ExternFun(fun) => fun,
 		_ => unreachable!()
 	};
-	let mut args = args.iter().map(|x| x.to_llvm_value(stmts, fun_name).0).collect::<Vec <_>>();
+	let mut args = args.iter().map(|x| x.to_llvm_value(stmts, fun_name, vals).0).collect::<Vec <_>>();
 	unsafe { LLVMBuildCall(llvm_builder(), fun.llvm_fun.unwrap(), args.as_mut_ptr(), args.len() as _, b"\0".as_ptr() as _) }
 }
 
-fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &[Stmt], fun_name: &str, ty: &Type) -> (LLVMValueRef, bool) {
+fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &[Stmt], fun_name: &str, fun_vals: &mut Vec <VariableInfo>, ty: &Type) -> (LLVMValueRef, bool) {
 	unsafe {
 		let fun = LLVMGetBasicBlockParent(LLVMGetInsertBlock(llvm_builder()));
 		let yes_bb = LLVMAppendBasicBlockInContext(llvm_context(), fun, b".yes\0".as_ptr() as _);
@@ -332,10 +331,10 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 		if !no.is_empty() {
 			let no_bb = LLVMCreateBasicBlockInContext(llvm_context(), b".no\0".as_ptr() as _);
 
-			LLVMBuildCondBr(llvm_builder(), cond.to_llvm_value(stmts, fun_name).0, yes_bb, no_bb);
+			LLVMBuildCondBr(llvm_builder(), cond.to_llvm_value(stmts, fun_name, fun_vals).0, yes_bb, no_bb);
 
 			LLVMPositionBuilderAtEnd(llvm_builder(), yes_bb);
-			let (yes_terminated, yes_val) = transpile_complex_body(yes, &mut HashMap::new(), stmts, fun_name, true);
+			let (yes_terminated, yes_val) = transpile_complex_body(yes, fun_vals, stmts, fun_name, true);
 			let yes_val_bb = LLVMGetInsertBlock(llvm_builder());
 			LLVMPositionBuilderAtEnd(llvm_builder(), yes_bb);
 			if LLVMGetBasicBlockTerminator(yes_bb).is_null() {
@@ -346,7 +345,7 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 			check_if_previous_basic_block_is_terminated_and_terminate_if_not(no_bb, endif_bb);
 
 			LLVMPositionBuilderAtEnd(llvm_builder(), no_bb);
-			let (no_terminated, no_val) = transpile_complex_body(no, &mut HashMap::new(), stmts, fun_name, true);
+			let (no_terminated, no_val) = transpile_complex_body(no, fun_vals, stmts, fun_name, true);
 			let no_val_bb = LLVMGetInsertBlock(llvm_builder());
 			LLVMPositionBuilderAtEnd(llvm_builder(), no_bb);
 			if LLVMGetBasicBlockTerminator(no_bb).is_null() {
@@ -369,15 +368,15 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 				LLVMAddIncoming(phi, values.as_mut_ptr(), blocks.as_mut_ptr(), 2);
 				phi
 			} else {
-				Expr::UNIT_TUPLE.to_llvm_value(stmts, fun_name).0
+				Expr::UNIT_TUPLE.to_llvm_value(stmts, fun_name, fun_vals).0
 			};
 
 			(result, are_both_branches_terminated)
 		} else {
-			LLVMBuildCondBr(llvm_builder(), cond.to_llvm_value(stmts, fun_name).0, yes_bb, endif_bb);
+			LLVMBuildCondBr(llvm_builder(), cond.to_llvm_value(stmts, fun_name, fun_vals).0, yes_bb, endif_bb);
 
 			LLVMPositionBuilderAtEnd(llvm_builder(), yes_bb);
-			transpile_complex_body(yes, &mut HashMap::new(), stmts, fun_name, false);
+			transpile_complex_body(yes, fun_vals, stmts, fun_name, false);
 			LLVMPositionBuilderAtEnd(llvm_builder(), yes_bb);
 			if LLVMGetBasicBlockTerminator(yes_bb).is_null() {
 				LLVMBuildBr(llvm_builder(), endif_bb);
@@ -387,7 +386,7 @@ fn build_if(cond: &Box <Expr>, yes: &Vec <FunStmt>, no: &Vec <FunStmt>, stmts: &
 			check_if_previous_basic_block_is_terminated_and_terminate_if_not(endif_bb, endif_bb);
 			LLVMPositionBuilderAtEnd(llvm_builder(), endif_bb);
 
-			(Expr::UNIT_TUPLE.to_llvm_value(stmts, fun_name).0, false)
+			(Expr::UNIT_TUPLE.to_llvm_value(stmts, fun_name, fun_vals).0, false)
 		}
 	}
 }
@@ -400,8 +399,8 @@ unsafe fn check_if_previous_basic_block_is_terminated_and_terminate_if_not(bb: L
 	}
 }
 
-fn build_dereference(ptr: &Expr, mutability: bool, stmts: &[Stmt], name: &str, is_lvalue: bool) -> LLVMValueRef {
-	let llvm = ptr.to_llvm_value(stmts, name).0;
+fn build_dereference(ptr: &Expr, mutability: bool, stmts: &[Stmt], name: &str, is_lvalue: bool, fun_vals: &mut Vec <VariableInfo>) -> LLVMValueRef {
+	let llvm = ptr.to_llvm_value(stmts, name, fun_vals).0;
 	if is_lvalue {
 		assert!(mutability, "cannot mutate non-mutable dereference");
 		llvm
@@ -452,8 +451,8 @@ impl Expr {
 		match &self.kind {
 			ExprKind::Variable { location } => match location {
 				ExprKindVariableLocation::FunArg { .. } => false,
-				ExprKindVariableLocation::Val { fun, line_def}
-					=> fun.fun(stmts).vals.get(line_def).unwrap().mutable,
+				ExprKindVariableLocation::Val { fun, idx}
+					=> fun.fun(stmts).vals[*idx].mutable,
 				ExprKindVariableLocation::AccessField { i, .. } => i.is_lvalue(stmts),
 				ExprKindVariableLocation::IInMethod { method }
 					=> matches!(FunLocation::Method(method.clone()).method().kind, AssociatedMethodKind::ByMutRef | AssociatedMethodKind::ByMutValue)
@@ -468,8 +467,8 @@ impl Expr {
 			ExprKind::Variable { location } => match location {
 				ExprKindVariableLocation::FunArg { fun, var_index }
 					=> &mut fun.fun_mut(input.stmts_mut()).args[*var_index].state,
-				ExprKindVariableLocation::Val { fun, line_def }
-					=> &mut fun.fun_mut(input.stmts_mut()).vals.get_mut(line_def).unwrap().state,
+				ExprKindVariableLocation::Val { fun, idx }
+					=> &mut fun.fun_mut(input.stmts_mut()).vals[*idx].state,
 				ExprKindVariableLocation::AccessField { i, field, def } => {
 					let state = i.get_variable_state(input);
 					match state {
@@ -523,31 +522,31 @@ impl Expr {
 		}
 	}
 
-	fn _to_llvm(&self, stmts: &[Stmt], is_lvalue: bool, fun_name: &str) -> (LLVMValueRef, /* terminated */ bool) {
+	fn _to_llvm(&self, stmts: &[Stmt], is_lvalue: bool, fun_name: &str, fun_vals: &mut Vec <VariableInfo>) -> (LLVMValueRef, /* terminated */ bool) {
 		(match &self.kind {
-			ExprKind::Variable { location } => build_variable(location, stmts, is_lvalue, fun_name),
-			ExprKind::Dereference { ptr, may_be_mutable } => build_dereference(ptr, *may_be_mutable, stmts, fun_name, is_lvalue),
+			ExprKind::Variable { location } => build_variable(location, stmts, is_lvalue, fun_name, fun_vals),
+			ExprKind::Dereference { ptr, may_be_mutable } => build_dereference(ptr, *may_be_mutable, stmts, fun_name, is_lvalue, fun_vals),
 
 			_ if is_lvalue => panic!("expected an lvalue"),
 
-			ExprKind::Tuple(values) => build_tuple(values, stmts, fun_name),
+			ExprKind::Tuple(values) => build_tuple(values, stmts, fun_name, fun_vals),
 			ExprKind::FunCall { fun, args }
-				=> build_fun_call(fun, args, stmts, fun_name),
+				=> build_fun_call(fun, args, stmts, fun_name, fun_vals),
 			ExprKind::ExternFunCall { fun_stmt_index, args }
-				=> build_extern_fun_call(*fun_stmt_index, args, stmts, fun_name),
+				=> build_extern_fun_call(*fun_stmt_index, args, stmts, fun_name, fun_vals),
 			ExprKind::BinOp { left, right, op }
-				=> build_bin_op(left, right, *op, stmts, fun_name),
+				=> build_bin_op(left, right, *op, stmts, fun_name, fun_vals),
 			ExprKind::Literal(lit) => build_literal(lit, &self.ty),
 			ExprKind::If { cond, yes, no }
-				=> return build_if(cond, yes, no, stmts, fun_name, &self.ty)
+				=> return build_if(cond, yes, no, stmts, fun_name, fun_vals, &self.ty)
 		}, false)
 	}
 
-	pub fn to_llvm_value(&self, stmts: &[Stmt], fun_name: &str) -> (LLVMValueRef, bool) {
-		self._to_llvm(stmts, false, fun_name)
+	pub fn to_llvm_value(&self, stmts: &[Stmt], fun_name: &str, fun_vals: &mut Vec <VariableInfo>) -> (LLVMValueRef, bool) {
+		self._to_llvm(stmts, false, fun_name, fun_vals)
 	}
 
-	pub fn to_llvm_lvalue(&self, stmts: &[Stmt], fun_name: &str) -> (LLVMValueRef, bool) {
-		self._to_llvm(stmts, true, fun_name)
+	pub fn to_llvm_lvalue(&self, stmts: &[Stmt], fun_name: &str, fun_vals: &mut Vec <VariableInfo>) -> (LLVMValueRef, bool) {
+		self._to_llvm(stmts, true, fun_name, fun_vals)
 	}
 }

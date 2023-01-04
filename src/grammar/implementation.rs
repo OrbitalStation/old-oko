@@ -1,5 +1,4 @@
 use peg::RuleResult;
-use std::collections::HashMap;
 use crate::*;
 
 type TypedefStructFieldRuleReturn = impl Iterator <Item = StructField>;
@@ -259,12 +258,12 @@ peg::parser! { grammar okolang() for str {
 				},
 				ty: arg.ty.clone()
 			}
-		} else if let Some((line, info)) = input.cur_fun().vals.iter().find(|(line, x)| **line < input.line() && x.name == name) {
+		} else if let Some((idx, info)) = input.cur_fun().vals.iter().enumerate().rev().find(|(_, x)| x.is_visible_from(input.idx_loc()) && x.name == name) {
 			Expr {
 				kind: ExprKind::Variable {
 					location: ExprKindVariableLocation::Val {
 						fun: input.fun_loc.clone(),
-						line_def: *line
+						idx
 					}
 				},
 				ty: info.init.ty.clone()
@@ -382,7 +381,10 @@ peg::parser! { grammar okolang() for str {
 		= nl() b:complex_body_line() ** nl()
 	{
 		assert!(!b.is_empty(), "`if` branch cannot be empty");
-		handle_complex_body_line(&(b.join("\n") + "\n"), input).0
+		input.next_nesting();
+		let res = handle_complex_body_line(&(b.join("\n") + "\n"), &input).0;
+		input.prev_nesting();
+		res
 	}
 
 	rule __expr1_if_body_complex_else_branch(input: ParseFunBodyInput) -> Vec <FunStmt>
@@ -522,14 +524,16 @@ peg::parser! { grammar okolang() for str {
 		= mutable:("$")? name:ident() _ ":=" _ init:expr(input)
 	{
 		init.mark_as_moved_and_panic_if_already(input);
-		input.cur_fun_mut().vals.insert(input.line(), VariableInfo {
+		let idx = input.cur_fun_mut().vals.len();
+		input.cur_fun_mut().vals.push(VariableInfo {
 			name,
 			state: VariableState::valid(&init.ty),
 			init,
 			mutable: mutable.is_some(),
-			llvm_value: None
+			llvm_value: None,
+			idx_loc: input.idx_loc().clone()
 		});
-		(FunStmt::ValDef { line: input.line() }, Type::UNIT_TUPLE)
+		(FunStmt::ValDef { idx }, Type::UNIT_TUPLE)
 	}
 
 	rule __fun_stmt_assign_short_assign <T> (input: ParseFunBodyInput, op: rule <T>, kind: BinOpType) -> (FunStmt, Type)
@@ -638,7 +642,7 @@ peg::parser! { grammar okolang() for str {
 					},
 					is_simple,
 					llvm_fun: None,
-					vals: HashMap::new()
+					vals: vec![]
 				}), assoc_kind)
 			}
 		}

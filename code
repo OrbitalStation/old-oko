@@ -1,10 +1,51 @@
-doSmth iter second: Iter = iter.skip(4).zip(second).cycle.skip(14).collect.skip 14
+pass x: i32 = ()
 
-ty Iter = x: i8
-    zip.! other: Y = i
+sideEffect = 14
 
-    cycle.! = i
+test
+    x := sideEffect
+    if 1 == 1
+        if 1 == 1
+            pass 0
+        else
+            pass 1
+            pass x
 
-    skip.! n: u64 = i
+test2
+    x := sideEffect
+    if 1 == 1
+        if 1 == 1
+            pass 0
+        else
+            pass 1
+        pass x
 
-    collect.! = i
+test3
+    x := sideEffect
+    pass x
+
+test4
+    x := sideEffect
+    if 1 == 1
+        pass x
+
+test5
+    if 1 == 1
+        x := sideEffect
+        pass x
+
+test6
+    if 1 == 1
+        x := sideEffect
+        if 1 == 1
+            pass x
+
+test7
+    if 1 == 1
+        x := sideEffect
+        if 1 == 1
+            if 1 == 1
+                if 1 == 1
+                    if 1 == 2
+                        pass x
+        pass x

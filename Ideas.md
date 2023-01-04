@@ -116,3 +116,4 @@
     of indentation
 * Placeholder would be `...` instead of `_` of Rust, Python, etc.
 * Add `typeof` operator
+* Think about effects from `Koka`, maybe it will be possible to use them

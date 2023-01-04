@@ -1,12 +1,11 @@
 use crate::*;
 
 pub fn parse_body_in_each_function(stmts: &mut Vec <Stmt>) {
-    let mut line = 0;
-    let mut input = ParseFunBodyInputStruct::new(stmts, &mut line);
+    let mut idx_loc = vec![0];
+    let mut input = ParseFunBodyInputStruct::new(stmts, &mut idx_loc);
     parse_methods_of_type_list(&mut input, Type::type_list(), None);
 
-    line = 0;
-    for input in ParseFunBodyInputStruct::new(stmts, &mut line) {
+    for input in ParseFunBodyInputStruct::new(stmts, &mut idx_loc) {
         match input.cur_mut() {
             Stmt::FunDef(fun) => parse_fun_body(fun, &input, None),
             Stmt::ExternFun(fun) => {
@@ -53,6 +52,8 @@ pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: O
         // Already parsed; ignore
         FunBody::Baked(_) => return
     };
+
+    input.reset_idx_loc();
 
     let body = if fun.is_simple {
         let (fun_stmt, _) = handle_complex_body_line(&format!("return {code}\n"), input);

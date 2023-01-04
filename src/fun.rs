@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
@@ -11,7 +10,7 @@ pub struct FunDef {
 	pub ret_ty: FunRetType,
 	pub is_simple: bool,
 	pub llvm_fun: Option <LLVMValueRef>,
-	pub vals: HashMap <usize, VariableInfo>
+	pub vals: Vec <VariableInfo>
 }
 
 impl FunDef {
@@ -45,7 +44,38 @@ pub struct VariableInfo {
 	pub init: Expr,
 	pub mutable: bool,
 	pub llvm_value: Option <LLVMValueRef>,
-	pub state: VariableState
+	pub state: VariableState,
+	pub idx_loc: Vec <usize>
+}
+
+impl VariableInfo {
+	pub fn is_visible_from(&self, loc: &[usize]) -> bool {
+		// ```
+		// block
+		// 	a := ...
+		// 	block
+		// 		b := ... <-- `loc` is here...
+		// 		block
+		// 			c := ...
+		// 			block
+		// 				d := ... <-- `self` is here
+		// 			c1 := ... <-- ...or `loc` is here
+		// 		b1 := ...
+		// 	a1 := ...
+		// ```
+		// In both cases `self` is inaccessible
+		if self.idx_loc.len() > loc.len() {
+			return false
+		}
+
+		if self.idx_loc.len() == loc.len() {
+			let is_in_same_block = self.idx_loc[..self.idx_loc.len() - 1] == loc[..loc.len() - 1];
+			let is_further = self.idx_loc.last().unwrap() < loc.last().unwrap();
+			return is_in_same_block && is_further
+		}
+
+		self.idx_loc.iter().zip(loc[..self.idx_loc.len()].iter()).all(|(x, y)| x <= y)
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -81,7 +111,7 @@ pub enum FunBody {
 pub enum FunStmt {
 	Expr(Expr),
 	Return(Box <Expr>),
-	ValDef { line: usize },
+	ValDef { idx: usize },
 	Assignment { lvalue: Expr, new: Expr }
 }
 

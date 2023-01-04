@@ -4,7 +4,7 @@ use crate::*;
 pub struct ParseFunBodyInputStruct {
 	pub fun_loc: FunLocation,
 	pub(in crate) mother_ty: Option <Type>,
-	line: *mut usize,
+	pub(in crate) idx_loc: *mut Vec <usize>,
 	stmts: *mut [Stmt]
 }
 
@@ -13,19 +13,19 @@ impl Clone for ParseFunBodyInputStruct {
 		Self {
 			fun_loc: self.fun_loc.clone(),
 			mother_ty: self.mother_ty.clone(),
-			line: self.line,
+			idx_loc: self.idx_loc,
 			stmts: self.stmts
 		}
 	}
 }
 
 impl ParseFunBodyInputStruct {
-	pub fn new(stmts: &mut [Stmt], line: &mut usize) -> Self {
+	pub fn new(stmts: &mut [Stmt], idx_loc: &mut Vec <usize>) -> Self {
 		Self {
 			fun_loc: FunLocation::Global { stmt_index: 0 },
 			mother_ty: None,
-			line: line as *mut usize,
-			stmts: stmts as *mut [Stmt]
+			idx_loc: idx_loc as *mut _,
+			stmts: stmts as *mut _
 		}
 	}
 
@@ -76,12 +76,24 @@ impl ParseFunBodyInputStruct {
 		})
 	}
 
-	pub fn line(&self) -> usize {
-		unsafe { *self.line }
+	pub fn idx_loc(&self) -> &Vec <usize> {
+		unsafe { &(*self.idx_loc) }
+	}
+
+	pub fn reset_idx_loc(&self) {
+		unsafe { *self.idx_loc = vec![0] }
 	}
 
 	pub fn next_line(&self) {
-		unsafe { *self.line += 1 }
+		unsafe { *(*self.idx_loc).last_mut().unwrap() += 1 }
+	}
+
+	pub fn next_nesting(&self) {
+		unsafe { (*self.idx_loc).push(0) }
+	}
+
+	pub fn prev_nesting(&self) {
+		unsafe { (*self.idx_loc).pop(); }
 	}
 
 	pub fn stmts_mut(&self) -> &mut [Stmt] {
@@ -106,7 +118,7 @@ impl Iterator for ParseFunBodyInputStruct {
 				Some(Self {
 					fun_loc: FunLocation::Global { stmt_index: *stmt_index - 1 },
 					mother_ty: self.mother_ty.clone(),
-					line: self.line,
+					idx_loc: self.idx_loc,
 					stmts: unsafe { core::mem::transmute(&mut *self.stmts) }
 				})
 			}
