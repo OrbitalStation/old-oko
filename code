@@ -1,10 +1,14 @@
+one -> i32
+    return block
+        1
+
 pass x: i32 = ()
 
 sideEffect = 14
 
 test
     x := sideEffect
-    if 1 == 1
+    block
         if 1 == 1
             pass 0
         else
@@ -13,7 +17,7 @@ test
 
 test2
     x := sideEffect
-    if 1 == 1
+    block
         if 1 == 1
             pass 0
         else
@@ -30,21 +34,21 @@ test4
         pass x
 
 test5
-    if 1 == 1
+    block
         x := sideEffect
         pass x
 
 test6
-    if 1 == 1
+    block
         x := sideEffect
-        if 1 == 1
+        block
             pass x
 
 test7
     if 1 == 1
         x := sideEffect
-        if 1 == 1
-            if 1 == 1
+        block
+            block
                 if 1 == 1
                     if 1 == 2
                         pass x

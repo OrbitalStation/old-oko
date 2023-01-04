@@ -197,3 +197,10 @@ if <cond>
     <stmtN>
 else <stmt>
 ```
+
+## Blocks
+```
+block
+    <stmt1>
+    <stmtN>
+```

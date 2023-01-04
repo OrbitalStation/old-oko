@@ -1,13 +1,17 @@
 mod common;
 
 const SRC: &str = r#"
+one -> i32
+    return block
+        1
+
 pass x: i32 = ()
 
 sideEffect = 14
 
 test
     x := sideEffect
-    if 1 == 1
+    block
         if 1 == 1
             pass 0
         else
@@ -16,7 +20,7 @@ test
 
 test2
     x := sideEffect
-    if 1 == 1
+    block
         if 1 == 1
             pass 0
         else
@@ -33,21 +37,21 @@ test4
         pass x
 
 test5
-    if 1 == 1
+    block
         x := sideEffect
         pass x
 
 test6
-    if 1 == 1
+    block
         x := sideEffect
-        if 1 == 1
+        block
             pass x
 
 test7
     if 1 == 1
         x := sideEffect
-        if 1 == 1
-            if 1 == 1
+        block
+            block
                 if 1 == 1
                     if 1 == 2
                         pass x
@@ -60,6 +64,11 @@ const RESULT: &str = r#"
 source_filename = "oko"
 
 %.tuple. = type {}
+
+define i32 @one() {
+entry:
+  ret i32 1
+}
 
 define void @pass(i32 %0) {
 entry:
@@ -75,52 +84,38 @@ entry:
 define void @test() {
 entry:
   %0 = call i32 @sideEffect()
-  br i1 true, label %.yes, label %.endif2
+  br i1 true, label %.yes, label %.no
 
 .yes:                                             ; preds = %entry
-  br i1 true, label %.yes1, label %.no
-
-.yes1:                                            ; preds = %.yes
   call void @pass(i32 0)
   br label %.endif
 
-.no:                                              ; preds = %.yes
+.no:                                              ; preds = %entry
   call void @pass(i32 1)
   call void @pass(i32 %0)
   br label %.endif
 
-.endif:                                           ; preds = %.no, %.yes1
+.endif:                                           ; preds = %.no, %.yes
   %1 = alloca %.tuple.
-  br label %.endif2
-
-.endif2:                                          ; preds = %.endif, %entry
-  %2 = alloca %.tuple.
   ret void
 }
 
 define void @test2() {
 entry:
   %0 = call i32 @sideEffect()
-  br i1 true, label %.yes, label %.endif2
+  br i1 true, label %.yes, label %.no
 
 .yes:                                             ; preds = %entry
-  br i1 true, label %.yes1, label %.no
-
-.yes1:                                            ; preds = %.yes
   call void @pass(i32 0)
   br label %.endif
 
-.no:                                              ; preds = %.yes
+.no:                                              ; preds = %entry
   call void @pass(i32 1)
   br label %.endif
 
-.endif:                                           ; preds = %.no, %.yes1
+.endif:                                           ; preds = %.no, %.yes
   %1 = alloca %.tuple.
   call void @pass(i32 %0)
-  br label %.endif2
-
-.endif2:                                          ; preds = %.endif, %entry
-  %2 = alloca %.tuple.
   ret void
 }
 
@@ -147,79 +142,44 @@ entry:
 
 define void @test5() {
 entry:
-  br i1 true, label %.yes, label %.endif
-
-.yes:                                             ; preds = %entry
   %0 = call i32 @sideEffect()
   call void @pass(i32 %0)
-  br label %.endif
-
-.endif:                                           ; preds = %.yes, %entry
-  %1 = alloca %.tuple.
   ret void
 }
 
 define void @test6() {
 entry:
-  br i1 true, label %.yes, label %.endif2
-
-.yes:                                             ; preds = %entry
   %0 = call i32 @sideEffect()
-  br i1 true, label %.yes1, label %.endif
-
-.yes1:                                            ; preds = %.yes
   call void @pass(i32 %0)
-  br label %.endif
-
-.endif:                                           ; preds = %.yes1, %.yes
-  %1 = alloca %.tuple.
-  br label %.endif2
-
-.endif2:                                          ; preds = %.endif, %entry
-  %2 = alloca %.tuple.
   ret void
 }
 
 define void @test7() {
 entry:
-  br i1 true, label %.yes, label %.endif8
+  br i1 true, label %.yes, label %.endif4
 
 .yes:                                             ; preds = %entry
   %0 = call i32 @sideEffect()
-  br i1 true, label %.yes1, label %.endif7
+  br i1 true, label %.yes1, label %.endif3
 
 .yes1:                                            ; preds = %.yes
-  br i1 true, label %.yes2, label %.endif6
+  br i1 false, label %.yes2, label %.endif
 
 .yes2:                                            ; preds = %.yes1
-  br i1 true, label %.yes3, label %.endif5
-
-.yes3:                                            ; preds = %.yes2
-  br i1 false, label %.yes4, label %.endif
-
-.yes4:                                            ; preds = %.yes3
   call void @pass(i32 %0)
   br label %.endif
 
-.endif:                                           ; preds = %.yes4, %.yes3
+.endif:                                           ; preds = %.yes2, %.yes1
   %1 = alloca %.tuple.
-  br label %.endif5
+  br label %.endif3
 
-.endif5:                                          ; preds = %.endif, %.yes2
+.endif3:                                          ; preds = %.endif, %.yes
   %2 = alloca %.tuple.
-  br label %.endif6
-
-.endif6:                                          ; preds = %.endif5, %.yes1
-  %3 = alloca %.tuple.
-  br label %.endif7
-
-.endif7:                                          ; preds = %.endif6, %.yes
-  %4 = alloca %.tuple.
   call void @pass(i32 %0)
-  br label %.endif8
+  br label %.endif4
 
-.endif8:                                          ; preds = %.endif7, %entry
-  %5 = alloca %.tuple.
+.endif4:                                          ; preds = %.endif3, %entry
+  %3 = alloca %.tuple.
   ret void
 }
 

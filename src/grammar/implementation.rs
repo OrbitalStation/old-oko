@@ -381,10 +381,7 @@ peg::parser! { grammar okolang() for str {
 		= nl() b:complex_body_line() ** nl()
 	{
 		assert!(!b.is_empty(), "`if` branch cannot be empty");
-		input.next_nesting();
-		let res = handle_complex_body_line(&(b.join("\n") + "\n"), &input).0;
-		input.prev_nesting();
-		res
+		handle_complex_body_line(&(b.join("\n") + "\n"), &input).0
 	}
 
 	rule __expr1_if_body_complex_else_branch(input: ParseFunBodyInput) -> Vec <FunStmt>
@@ -446,6 +443,23 @@ peg::parser! { grammar okolang() for str {
 		}
 	}
 
+	rule __expr1_block(input: ParseFunBodyInput) -> Expr
+		= "block" nl() b:complex_body_line() ** nl()
+	{
+		assert!(!b.is_empty(), "`block` expr cannot be empty");
+		let mut stmts = handle_complex_body_line(&(b.join("\n") + "\n"), &input).0;
+		let ty = if let Some(last) = stmts.last_mut().unwrap().as_expr_mut() {
+			last.mark_as_moved_and_panic_if_already(input);
+			last.ty.clone()
+		} else {
+			Type::UNIT_TUPLE
+		};
+		Expr {
+			kind: ExprKind::Block { stmts },
+			ty
+		}
+	}
+
 	rule __expr1_access_inner(fields: Expr) -> Expr
 		= "" { fields }
 
@@ -475,6 +489,7 @@ peg::parser! { grammar okolang() for str {
 		"(" _ ")" { Expr::UNIT_TUPLE }
 		"(" _ x:expr(input) _ ")" { x }
 		x:__expr1_if(input) { x }
+		x:__expr1_block(input) { x }
 		x:__expr1_variable(input) { x }
 		x:__expr1_literal() { x }
 	}

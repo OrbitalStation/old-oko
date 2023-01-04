@@ -175,6 +175,9 @@ pub enum ExprKind {
 		yes: Vec <FunStmt>,
 		no: Vec <FunStmt>
 	},
+	Block {
+		stmts: Vec <FunStmt>
+	},
 	Dereference {
 		ptr: Box <Expr>,
 		may_be_mutable: bool
@@ -399,6 +402,11 @@ unsafe fn check_if_previous_basic_block_is_terminated_and_terminate_if_not(bb: L
 	}
 }
 
+fn build_block(fun_stmts: &Vec <FunStmt>, stmts: &[Stmt], fun_name: &str, fun_vals: &mut Vec <VariableInfo>) -> (LLVMValueRef, bool) {
+ 	let (a, b) = transpile_complex_body(fun_stmts, fun_vals, stmts, fun_name, true);
+	(b.unwrap(), a)
+}
+
 fn build_dereference(ptr: &Expr, mutability: bool, stmts: &[Stmt], name: &str, is_lvalue: bool, fun_vals: &mut Vec <VariableInfo>) -> LLVMValueRef {
 	let llvm = ptr.to_llvm_value(stmts, name, fun_vals).0;
 	if is_lvalue {
@@ -516,6 +524,7 @@ impl Expr {
 			ExprKind::Literal(_)
 			| ExprKind::BinOp { .. }
 			| ExprKind::If { .. }
+			| ExprKind::Block { .. }
 			| ExprKind::Tuple(_)
 			| ExprKind::FunCall { ..}
 			| ExprKind::ExternFunCall { .. } => { /* ignore */ },
@@ -538,7 +547,8 @@ impl Expr {
 				=> build_bin_op(left, right, *op, stmts, fun_name, fun_vals),
 			ExprKind::Literal(lit) => build_literal(lit, &self.ty),
 			ExprKind::If { cond, yes, no }
-				=> return build_if(cond, yes, no, stmts, fun_name, fun_vals, &self.ty)
+				=> return build_if(cond, yes, no, stmts, fun_name, fun_vals, &self.ty),
+			ExprKind::Block { stmts: fun_stmts } => return build_block(fun_stmts, stmts, fun_name, fun_vals)
 		}, false)
 	}
 

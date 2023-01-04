@@ -3,7 +3,9 @@ use llvm::core::*;
 use llvm::prelude::*;
 
 pub fn handle_complex_body_line(body: &String, input: ParseFunBodyInput) -> (Vec <FunStmt>, Type) {
+	input.next_nesting();
 	let mut body: Vec <(FunStmt, Type)> = parse_complex_body(&body, input).unwrap();
+	input.prev_nesting();
 	let (last, last_ty) = body.pop().unwrap();
 
 	let vec = body.into_iter().map(|(stmt, ty)| {
@@ -51,7 +53,7 @@ pub fn transpile_complex_body(body: &Vec <FunStmt>, vals: &mut Vec <VariableInfo
 						return (false, Some(e))
 					}
 				},
-				ExprKind::If { .. } => {
+				ExprKind::If { .. } | ExprKind::Block { .. } => {
 					let (e, k) = expr.to_llvm_value(stmts, name, vals);
 					if k {
 						if i + 1 < body.len() {
