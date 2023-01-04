@@ -1,5 +1,10 @@
-add a b: i32 = identity(a) + identity(b)
+doSmth iter second: Iter = iter.skip(4).zip(second).cycle.skip(14).collect.skip 14
 
-identity x: i32 = x
+ty Iter = x: i8
+    zip.! other: Y = i
 
-test a b: i32 = add(a, b)
+    cycle.! = i
+
+    skip.! n: u64 = i
+
+    collect.! = i

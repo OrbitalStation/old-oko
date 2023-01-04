@@ -115,3 +115,4 @@
 * Add `block` expression, which just introduces a new level
     of indentation
 * Placeholder would be `...` instead of `_` of Rust, Python, etc.
+* Add `typeof` operator

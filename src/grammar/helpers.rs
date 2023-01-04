@@ -46,65 +46,72 @@ pub(in crate) fn _get_static_method(mother: &Type, name: &str) -> Option <(FunLo
 	}), &mut method.def))
 }
 
-pub(in crate) fn access_field_inner(mother: Option <Result <Type, Expr>>, input: ParseFunBodyInput, mut fields: Vec <String>) -> Option <Expr> {
+pub(in crate) fn access_field_inner(mother: Option <Result <Type, Expr>>, input: ParseFunBodyInput, mut fields: Vec <(String, Option <Vec <Expr>>)>) -> Option <Expr> {
 	let mut cur = match mother {
 		Some(mother) => match mother {
 			Ok(mother) => {
 				// Check for static associated items
-				let first = fields.remove(0);
+				let (first_name, first_args) = fields.remove(0);
 				// TODO: replace that `?` with check for static associated variables
-				let (fun, def) = _get_static_method(&mother, &first)?;
+				let (fun, def) = _get_static_method(&mother, &first_name)?;
 				let ty = def.ret_ty_as_determined(input, Some(AssociatedMethodKind::Static), fun.clone()).clone();
+				let args = first_args.unwrap_or(vec![]);
+				assert_eq!(def.args.len(), args.len(), "function argument number mismatch");
 				Expr {
 					kind: ExprKind::FunCall {
 						fun,
-						args: vec![]
+						args
 					},
 					ty
 				}
 			},
 			Err(mother) => mother
 		},
-		_ => {
-			let first = fields.remove(0);
-			__expr1_variable(&first, input).ok().or_else(|| {
-				let (stmt_index, fun) = input.fun_by_name_mut(&first)?;
-				if !fun.args.is_empty() {
-					return None
+		None => {
+			let (first_name, first_args) = fields.remove(0);
+
+			let var = if first_args.is_some() {
+				None
+			} else {
+				__expr1_variable(&first_name, input).ok()
+			};
+
+			match var {
+				Some(x) => x,
+				None => {
+					let (stmt_index, fun) = input.fun_by_name_mut(&first_name)?;
+					let args = match first_args {
+						None => if !fun.args.is_empty() {
+							return None
+						} else {
+							vec![]
+						},
+						Some(x) => x
+					};
+					assert_eq!(fun.args.len(), args.len(), "function args number mismatch");
+					do_fun_call((FunLocation::Global { stmt_index }, fun, args.len(), None), args, input)
 				}
-				let ty = fun.ret_ty_as_determined(input, None, FunLocation::Global { stmt_index }).clone();
-				Some(Expr {
-					kind: ExprKind::FunCall {
-						fun: FunLocation::Global { stmt_index },
-						args: vec![],
-					},
-					ty,
-				})
-			})?
+			}
 		}
 	};
 
-	for next in fields {
+	for (next_name, next_args) in fields {
 		cur = cur.dereference_if_ref_or_nop();
-		if let Some((ty_loc, method_index, method)) = _get_fun_get_loc_and_method(&cur.ty, &next) {
-			assert_eq!(method.def.args.len(), 0);
+		if let Some((ty_loc, method_index, method)) = _get_fun_get_loc_and_method(&cur.ty, &next_name) {
+			let args = next_args.unwrap_or(vec![]);
+			assert_eq!(method.def.args.len(), args.len(), "function args number mismatch");
 			let loc = FunLocation::Method(FunMethodLocation {
 				ty_loc,
 				method_index
 			});
-			let ty = method.def.ret_ty_as_determined(input, Some(method.kind), loc.clone()).clone();
-			cur = Expr {
-				kind: ExprKind::FunCall {
-					fun: loc,
-					args: vec![cur],
-				},
-				ty,
-			};
+			cur = do_fun_call((loc, &mut method.def, args.len(), Some(cur)), args, input);
 			continue
 		}
 
+		assert!(next_args.is_none(), "no function named `{next_name}` found in `{:?}`", cur.ty);
+
 		let fields = cur.ty.get_fields_of_struct().expect("cannot access a field of not-a-structure");
-		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == next).expect("no field with such a name found");
+		let (idx, field) = fields.iter().enumerate().find(|(_, x)| x.name == next_name).expect("no field with such a name found");
 		cur = Expr {
 			kind: ExprKind::Variable {
 				location: ExprKindVariableLocation::AccessField {
@@ -129,19 +136,20 @@ pub(in crate) fn _get_fun_get_loc_and_method(ty: &Type, method: &str) -> Option 
 	}
 }
 
-pub(in crate) fn get_fun(mother: Option <Result <Type, Expr>>, input: ParseFunBodyInput, mut components: Vec <String>) -> Option <(FunLocation, &mut FunDef, usize, Option <Expr>)> {
+pub(in crate) fn get_fun(mother: Option <Result <Type, Expr>>, input: ParseFunBodyInput, mut components: Vec <(String, Option <Vec <Expr>>)>) -> Option <Result <(FunLocation, &mut FunDef, usize, Option <Expr>), Expr>> {
 	Some(if components.len() == 1 {
-		if let Some(mother) = mother {
+		let (first_name, first_args) = components.remove(0);
+		let i = if let Some(mother) = mother {
 			match mother {
+				// Static method
 				Ok(mother) => {
-					// Static method
-					let (loc, method) = _get_static_method(&mother, &components[0])?;
+					let (loc, method) = _get_static_method(&mother, &first_name)?;
 					let len = method.args.len();
 					(loc, method, len, None)
 				},
 				Err(expr) => {
 					// Non-static method on `(expr)`
-					let (ty_loc, method_index, method) = _get_fun_get_loc_and_method(&expr.ty, &components[0])?;
+					let (ty_loc, method_index, method) = _get_fun_get_loc_and_method(&expr.ty, &first_name)?;
 					let len = method.def.args.len();
 					(FunLocation::Method(FunMethodLocation {
 						ty_loc,
@@ -151,19 +159,29 @@ pub(in crate) fn get_fun(mother: Option <Result <Type, Expr>>, input: ParseFunBo
 			}
 		} else {
 			// Global function
-			let (i, d) = input.fun_by_name_mut(&components[0])?;
+			let (i, d) = input.fun_by_name_mut(&first_name)?;
 			let len = d.args.len();
 			(FunLocation::Global { stmt_index: i }, d, len, None)
+		};
+		match first_args {
+			// Not an in-place call
+			None => Ok(i),
+			// An in-place call
+			Some(args) => Err(do_fun_call(i, args, input))
 		}
 	} else {
-		let fun_name = components.pop().unwrap();
+		let (fun_name, fun_args) = components.pop().unwrap();
 		let mother_ty = access_field_inner(mother, input, components)?.dereference_if_ref_or_nop();
 		let (ty_loc, method_index, method) = _get_fun_get_loc_and_method(&mother_ty.ty, &fun_name)?;
 		let len = method.def.args.len();
-		(FunLocation::Method(FunMethodLocation {
+		let i = (FunLocation::Method(FunMethodLocation {
 			ty_loc,
 			method_index,
-		}), &mut method.def, len, Some(mother_ty))
+		}), &mut method.def, len, Some(mother_ty));
+		match fun_args {
+			None => Ok(i),
+			Some(args) => Err(do_fun_call(i, args, input))
+		}
 	})
 }
 
@@ -229,5 +247,35 @@ pub(in crate) fn __non_ptr_ty_cont_helper(loc: Result <TypeKindScalarLocation, V
 			x.push(new);
 			Some(Err(x))
 		}
+	}
+}
+
+pub(crate) fn do_fun_call(i: (FunLocation, &mut FunDef, usize, Option <Expr>), mut args: Vec <Expr>, input: ParseFunBodyInput) -> Expr {
+	let (fun_loc, fun_def, _, i_of_method) = i;
+
+	assert_eq!(args.len(), fun_def.args.len(), "argument number doesn't match in call of `{}`", fun_def.name);
+
+	for (idx, arg) in args.iter_mut().enumerate() {
+		if !arg.ty.try_implicitly_convert(&fun_def.args[idx].ty, None) {
+			panic!("argument types doesn't match in call of `{}`", fun_def.name)
+		}
+		arg.mark_as_moved_and_panic_if_already(input)
+	}
+
+	let method_info = if let Some(i) = i_of_method {
+		args.insert(0, i);
+		Some(fun_loc.method().kind)
+	} else if matches!(fun_loc, FunLocation::Method(_)) {
+		Some(fun_loc.method().kind)
+	} else {
+		None
+	};
+
+	Expr {
+		kind: ExprKind::FunCall {
+			fun: fun_loc.clone(),
+			args
+		},
+		ty: fun_def.ret_ty_as_determined(input, method_info, fun_loc).clone()
 	}
 }

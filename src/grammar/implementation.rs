@@ -318,8 +318,14 @@ peg::parser! { grammar okolang() for str {
 		= ty:existing_ty(input.mother_ty()) _ "." _ { Ok(ty) }
 		/ "(" _ x:expr(input) _ ")" _ "." _ { Err(x) }
 
-	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> (FunLocation, &'a mut FunDef, usize, Option <Expr>)
-		= ty:__expr1_associated_item_prefix(input)? names:ident() ++ (_ "." _)
+	rule __expr1_fun_call_helper_cont_args(input: ParseFunBodyInput) -> Vec <Expr>
+		= "(" _ e:__expr1(input) ** (_ "," _) _ ")" { e }
+
+	rule __expr1_fun_call_helper_cont(input: ParseFunBodyInput) -> (String, Option <Vec <Expr>>)
+		= name:ident() args:__expr1_fun_call_helper_cont_args(input)? { (name, args) }
+
+	rule __expr1_fun_call_helper <'a> (input: ParseFunBodyInput <'a>) -> Result <(FunLocation, &'a mut FunDef, usize, Option <Expr>), Expr>
+		= ty:__expr1_associated_item_prefix(input)? names:__expr1_fun_call_helper_cont(input) ++ (_ "." _)
 	{? get_fun(ty, input, names).ok_or("function call") }
 
 	rule __expr1_fun_call_open_bracket() -> bool
@@ -330,39 +336,14 @@ peg::parser! { grammar okolang() for str {
 		= _ ")" {? if opb { Ok(()) } else { Err("") } }
 		/ "" {? if opb { Err("closing bracket") } else { Ok(()) } }
 
+	rule __expr1_fun_call_cont(input: ParseFunBodyInput, i: Result <(FunLocation, &mut FunDef, usize, Option <Expr>), Expr>) -> Expr
+		= fail_on_true(i.is_ok()) { i.as_ref().unwrap_err().clone() }
+		/ opb:__expr1_fun_call_open_bracket() args:__expr1_fun_call_argument(input, i.as_ref().unwrap().2, opb, true)? __expr1_fun_call_close_bracket(opb)
+		{ do_fun_call(i.unwrap(), args.unwrap_or(vec![]), input) }
+
 	rule __expr1_fun_call(input: ParseFunBodyInput) -> Expr
-		= i:__expr1_fun_call_helper(input) opb:__expr1_fun_call_open_bracket() args:__expr1_fun_call_argument(input, i.2, opb, true)? __expr1_fun_call_close_bracket(opb)
-	{?
-		let (fun_loc, fun_def, _, i_of_method) = i;
-
-		let mut args = args.unwrap_or(vec![]);
-
-		assert_eq!(args.len(), fun_def.args.len(), "argument number doesn't match in call of `{}`", fun_def.name);
-
-		for (idx, arg) in args.iter_mut().enumerate() {
-			if !arg.ty.try_implicitly_convert(&fun_def.args[idx].ty, None) {
-				panic!("argument types doesn't match in call of `{}`", fun_def.name)
-			}
-			arg.mark_as_moved_and_panic_if_already(input)
-		}
-
-		let method_info = if let Some(i) = i_of_method {
-			args.insert(0, i);
-			Some(fun_loc.method().kind)
-		} else if matches!(fun_loc, FunLocation::Method(_)) {
-			Some(fun_loc.method().kind)
-		} else {
-			None
-		};
-
-		Ok(Expr {
-			kind: ExprKind::FunCall {
-				fun: fun_loc.clone(),
-				args
-			},
-			ty: fun_def.ret_ty_as_determined(input, method_info, fun_loc).clone()
-		})
-	}
+		= i:__expr1_fun_call_helper(input) cont:__expr1_fun_call_cont(input, i)
+	{ cont }
 
 	rule __expr1_extern_fun_call(input: ParseFunBodyInput) -> Expr
 		= fun:ident() opb:__expr1_fun_call_open_bracket() args:__expr1_fun_call_argument(input, open_option_in_arg!(input.extern_fun_by_name(&fun)).1.args.len(), opb, true)? __expr1_fun_call_close_bracket(opb)
@@ -467,7 +448,7 @@ peg::parser! { grammar okolang() for str {
 		= "" { fields }
 
 	rule __expr1_access(input: ParseFunBodyInput) -> Expr
-		= prefix:__expr1_associated_item_prefix(input)? fields:ident() ++ (_ "." _) e:__expr1_access_inner(open_option_in_arg!(access_field_inner(prefix, input, fields)))
+		= prefix:__expr1_associated_item_prefix(input)? fields:__expr1_fun_call_helper_cont(input) ++ (_ "." _) e:__expr1_access_inner(open_option_in_arg!(access_field_inner(prefix, input, fields)))
 	{ e }
 
 	rule __expr1(input: ParseFunBodyInput) -> Expr = precedence! {

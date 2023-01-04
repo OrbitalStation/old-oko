@@ -507,9 +507,6 @@ impl Expr {
 
 		match &self.kind {
 			ExprKind::Variable { .. } => mark_state(self.get_variable_state(input)),
-			ExprKind::Tuple(elems) | ExprKind::FunCall { args: elems, ..} | ExprKind::ExternFunCall { args: elems, .. } => for elem in elems {
-				elem.mark_as_moved_and_panic_if_already(input)
-			},
 			ExprKind::Dereference { ptr, .. } => {
 				match &ptr.ty.kind {
 					TypeKind::Reference { ty, ..} | TypeKind::Pointer { ty, ..}
@@ -517,7 +514,12 @@ impl Expr {
 					_ => unimplemented!("cannot do that yet :D")
 				}
 			},
-			ExprKind::Literal(_) | ExprKind::BinOp { .. } | ExprKind::If { .. } => { /* ignore */ },
+			ExprKind::Literal(_)
+			| ExprKind::BinOp { .. }
+			| ExprKind::If { .. }
+			| ExprKind::Tuple(_)
+			| ExprKind::FunCall { ..}
+			| ExprKind::ExternFunCall { .. } => { /* ignore */ },
 		}
 	}
 

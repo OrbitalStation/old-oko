@@ -1,5 +1,4 @@
 use std::ffi::CString;
-use llvm::analysis::*;
 use llvm::core::*;
 use llvm::prelude::*;
 use crate::*;
@@ -42,8 +41,6 @@ fn create_fundef(stmts: &[Stmt], fundef: &mut FunDef) {
 			panic!("return statement is missing from function `{name}`")
 		}
 	}
-
-	unsafe { LLVMVerifyFunction(fun, LLVMVerifierFailureAction::LLVMAbortProcessAction); }
 }
 
 fn create_typedef(stmts: &[Stmt], baked: &mut BakedType, prefix: &str) {

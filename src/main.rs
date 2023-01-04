@@ -26,6 +26,8 @@ fn main() {
 
     transpile_statements_into_llvm(&mut stmts);
 
+    unsafe { llvm::analysis::LLVMVerifyModule(llvm_module(), llvm::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction, core::ptr::null_mut()); }
+
 	let res = unsafe { llvm::core::LLVMPrintModuleToString(llvm_module()) };
 	let res = unsafe { CStr::from_ptr(res as _) };
 	let res = res.to_str().unwrap();

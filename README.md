@@ -147,6 +147,18 @@ a or b
 `a.b.c`
 `wrapper.inner`
 
+## Method call
+`val.method`
+`val.method()`
+
+`val.method(x)`
+`val.method x`
+
+`val.method(1, 2, 34)`
+`val.method 1 2 34`
+
+`val.method1(1234).method2.method3(14, 12).method4.method5.field1.method6 2`
+
 ## Dereferencing
 `*ptr`
 `*a.y.x`
