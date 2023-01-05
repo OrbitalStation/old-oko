@@ -1,37 +1,37 @@
 mod common;
 
 const SRC: &str = r#"
-ty bool = Yes | No
+enum bool = yes | no
 	id.& = i
 
-ty bool2
-	Yes
-	No
+enum bool2
+	yes
+	no
 
 	id.& = i
 
-ty TripleBool = Yes | No | Probably
+enum TripleBool = yes | no | probably
 	id.& = i
 
-ty TripleBool2
+enum TripleBool2
 	Yes
 	No
 	Probably
 
 	id.& = i
 
-ty SureBool = Sure
+enum SureBool = Sure
 	id.& = i
 
-ty SureBool2
+enum SureBool2
 	Sure
 
 	id.& = i
 
-ty NahBool = Nah
+enum NahBool = Nah
 	id.& = i
 
-ty NahBool2
+enum NahBool2
 	Nah
 
 	id.& = i
@@ -40,28 +40,28 @@ ty NahBool2
 *      With data      *
 * ******************* *
 
-ty optional = None | Some i32
+enum optional = None | Some i32
 	id.& = i
 
-ty optional2
+enum optional2
 	None
 	Some i32
 
 	id.& = i
 
-ty result = Ok SureBool | Err NahBool
+enum result = Ok SureBool | Err NahBool
 	id.& = i
 
-ty result2
+enum result2
 	Ok SureBool
 	Err NahBool
 
 	id.& = i
 
-ty Position = TwoD x y: i32 | ThreeD x y z: i32 | FourD x y z w: i32
+enum Position = TwoD x y: i32 | ThreeD x y z: i32 | FourD x y z w: i32
 	id.& = i
 
-ty Position2
+enum Position2
 	TwoD
 		x: i32
 		y: i32
@@ -72,10 +72,10 @@ ty Position2
 
 	id.& = i
 
-ty PositionTuple = NoD | TwoD i32 i32 | ThreeD i32 i32 i32 | FourD i32 i32 i32 i32
+enum PositionTuple = NoD | TwoD i32 i32 | ThreeD i32 i32 i32 | FourD i32 i32 i32 i32
 	id.& = i
 
-ty PositionTuple2
+enum PositionTuple2
 	NoD
 	TwoD i32 i32
 	ThreeD i32 i32 i32

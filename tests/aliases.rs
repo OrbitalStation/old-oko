@@ -16,8 +16,8 @@ ty Wrapper = x: int
 
 ty OIVI = alias Outer.Inner.VeryInner
 
-ty Outer = Empty
-	ty Inner = Empty
+enum Outer = empty
+	enum Inner = empty
 		ty VeryInner = x: i32
 			twentySeven.* = 27
 

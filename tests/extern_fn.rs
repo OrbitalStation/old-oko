@@ -1,7 +1,7 @@
 mod common;
 
 const SRC: &str = r#"
-ty Opaque = Opaque
+enum Opaque = opaque
 
 puts s: *u8 -> i32 = extern
 

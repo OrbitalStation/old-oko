@@ -10,26 +10,33 @@
 
 ### Short form
 
-`ty bool = yes | no`
+#### Full enums
 
-`ty optional = None | Some T`
+`enum bool = yes | no`
+
+`enum optional = None | Some T`
+
+#### Enums with one variant -- `new`
 
 `ty Filter = iter: I + pred: P`
 
 ### Long form
 
+#### Full enums
+
 ```
-ty bool
+enum bool
     yes
     no
 ```
 
 ```
-ty optional
+enum optional
     None
     Some T
 ```
 
+#### Enums with one variant -- `new`
 
 ```
 ty Filter
@@ -60,27 +67,18 @@ ty Wrapper = x: i32
 * `.$!` - a mutable moved value
 * `.*` - a static method
 
-### Types
-
-```
-ty Wrapper = x: Y.InnerWrapper
-    ty InnerWrapper = x: i32
-    
-    unwrap.& = i.x.x
-```
-
 ## Function definition
 
 ### Short form
 
-`add a b: T = <expr>`
+`add a b: i32 = a + b`
 
 `pass = ()`
 
 ### Long form
 
 ```
-add a b: T -> T
+add a b: i32 -> i32
     return a + b
 ```
 
@@ -169,7 +167,6 @@ a or b
 if <cond>
     <stmt1>
     <stmtN>
-
 
 if <cond>
     <stmt1>

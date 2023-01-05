@@ -148,9 +148,13 @@ peg::parser! { grammar okolang() for str {
 		= "ty" __ loc:__type_alias_definition_add(mother) __type_alias_definition_body(mother, &loc)
 	{ loc }
 
+	rule __typedef_keyword() -> bool
+		= "ty" { true }
+		/ "enum" { false }
+
 	rule type_definition(mother: Option <&TypeKindScalarLocation>) -> TypeKindScalarLocation
 		= x:__type_alias_definition(mother) { x }
-		/ "ty" __ ty:__type_definition_add(mother) variants:type_definition_body(&ty) assoc_items:typedef_assoc_items_raw()
+		/ kw:__typedef_keyword() __ ty:__type_definition_add(mother) variants:type_definition_body(kw, &ty) assoc_items:typedef_assoc_items_raw()
 	{
 		let loc = ty.as_scalar_loc().unwrap();
 
@@ -166,11 +170,14 @@ peg::parser! { grammar okolang() for str {
 		loc.clone()
 	}
 
-	rule type_definition_body(mother_ty: &Type) -> Vec <EnumVariant> = kind:(
-		typedef_inline_enum(mother_ty)
-		/ typedef_wide_enum(mother_ty)
-		/ typedef_inline_struct(mother_ty)
-		/ typedef_wide_struct(mother_ty)
+	rule __typedef_body_helper(fail: bool, r: rule <Vec <EnumVariant>>) -> Vec <EnumVariant>
+		= fail_on_true(fail) x:r() { x }
+
+	rule type_definition_body(is_ty: bool, mother_ty: &Type) -> Vec <EnumVariant> = kind:(
+		__typedef_body_helper(is_ty, <typedef_inline_enum(mother_ty)>)
+		/ __typedef_body_helper(is_ty, <typedef_wide_enum(mother_ty)>)
+		/ __typedef_body_helper(!is_ty, <typedef_inline_struct(mother_ty)>)
+		/ __typedef_body_helper(!is_ty, <typedef_wide_struct(mother_ty)>)
 	) { kind }
 
 	rule typedef_struct_field(mother_ty: &Type) -> TypedefStructFieldRuleReturn
@@ -196,14 +203,6 @@ peg::parser! { grammar okolang() for str {
 
 	rule typedef_wide_struct(mother_ty: &Type) -> Vec <EnumVariant> = nl() fields:typedef_wide_struct_field(mother_ty)+ {
 		TypeDef::from_fields(fields)
-	}
-
-	rule __uppercased_ident() -> String = i:ident() {?
-		if i.chars().next().unwrap().is_uppercase() {
-			Ok(i)
-		} else {
-			Err("an uppercase ident")
-		}
 	}
 
 	rule fail_on_true(should_fail: bool) = quiet!{""} {?
@@ -236,14 +235,17 @@ peg::parser! { grammar okolang() for str {
 		/ "" { TypeVariantAttachedData::None }
 
 	rule __typedef_enum_variant(mother_ty: &Type, is_inline: bool) -> EnumVariant
-		= __enum_variant_attached_data_fields_expected1(<"\t">, !is_inline) name:__uppercased_ident() data:__enum_variant_attached_data(mother_ty, is_inline)
+		= __enum_variant_attached_data_fields_expected1(<"\t">, !is_inline) name:ident() data:__enum_variant_attached_data(mother_ty, is_inline)
 	{ EnumVariant { name, data } }
 
 	rule typedef_inline_enum(mother_ty: &Type) -> Vec <EnumVariant> = _ "=" _ variants:__typedef_enum_variant(mother_ty, true) ++ (_ "|" _) nl() {
 		variants
 	}
 
-	rule typedef_wide_enum(mother_ty: &Type) -> Vec <EnumVariant> = nl() variants:__typedef_enum_variant(mother_ty, false) ++ nl() nl()? {
+	rule __typedef_wide_enum_variant(mother_ty: &Type) -> EnumVariant
+		= x:__typedef_enum_variant(mother_ty, false) nl() { x }
+
+	rule typedef_wide_enum(mother_ty: &Type) -> Vec <EnumVariant> = nl() variants:__typedef_wide_enum_variant(mother_ty)+ {
 		variants
 	}
 
