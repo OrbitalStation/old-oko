@@ -161,11 +161,12 @@ peg::parser! { grammar okolang() for str {
 		let items = typedef_assoc_items(&(assoc_items + "\n"), &ty).unwrap();
 
 		let typedef = loc.type_def().unwrap();
+		typedef.variants = variants;
+		let generated = typedef.generate_variant_constructors(&ty);
 		typedef.methods = items.into_iter().filter_map(|x| match x {
 			AssociatedItem::Method(x) => Some(x),
 			_ => None
-		}).collect();
-		typedef.variants = variants;
+		}).chain(generated).collect();
 
 		loc.clone()
 	}

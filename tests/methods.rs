@@ -59,6 +59,13 @@ entry:
   ret void
 }
 
+define void @NonCopyType.new(i8 %0, %NonCopyType* %1) {
+entry:
+  %2 = getelementptr inbounds %NonCopyType, %NonCopyType* %1, i32 0, i32 0
+  store i8 %0, i8* %2
+  ret void
+}
+
 define i32 @SomeType.unwrapX(%SomeType* %0) {
 entry:
   %1 = getelementptr inbounds %SomeType, %SomeType* %0, i32 0, i32 0
@@ -105,6 +112,19 @@ define i32 @SomeType.getWrongAnswer() {
 entry:
   ret i32 41
 }
+
+define void @SomeType.new(i32 %0, i16 %1, %NonCopyType* %2, %SomeType* %3) {
+entry:
+  %4 = getelementptr inbounds %SomeType, %SomeType* %3, i32 0, i32 0
+  store i32 %0, i32* %4
+  %5 = getelementptr inbounds %SomeType, %SomeType* %3, i32 0, i32 1
+  store i16 %1, i16* %5
+  %6 = getelementptr inbounds %SomeType, %SomeType* %3, i32 0, i32 2
+  %7 = load %NonCopyType, %NonCopyType* %2
+  store %NonCopyType %7, %NonCopyType* %6
+  ret void
+}
+
 
 "#;
 

@@ -102,9 +102,19 @@ impl FunArg {
 }
 
 #[derive(Debug, Clone)]
+#[repr(u8)]
+pub enum BuiltinFunBody {
+	VariantFieldConstructor {
+		mother_ty: Type,
+		variant_index: usize
+	}
+}
+
+#[derive(Debug, Clone)]
 pub enum FunBody {
 	Raw { code: String },
-	Baked(Vec <FunStmt>)
+	Baked(Vec <FunStmt>),
+	Builtin(BuiltinFunBody)
 }
 
 #[derive(Debug, Clone)]

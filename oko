@@ -7,7 +7,7 @@
 
 * Enum of values `None` and `Some` containing some value
 * Methods `isNone` and `isSome` are defined automatically
-ty optional
+enum optional
 	None
 	Some T
 
@@ -16,13 +16,13 @@ ty optional
 		None => None
 		Some value => Some mutator value
 
-ty result = Ok T | Err E
+enum result = Ok T | Err E
 	or.& pred: λE -> T = choose x
 		Ok value => value
 		Err error => pred error
 
-* Enum of two values `Yes` and `No`
-ty bool = Yes | No
+* Enum of two values `yes` and `no`
+enum bool = yes | no
 
 idea Iterator
 	* An associated type
@@ -36,24 +36,19 @@ idea Iterator
 	* fn isExhausted(&self) -> bool;
 	isExhausted.& -> bool
 
-* The keyword `ty` creates an enum type.
-* Variants of such a type may contain tuple values,
-*   e.g. `ty optional = None | Some T`,
-*   may contain fields, e.g. `ty Position = Global | Local place: Place`
-*   or not contain anything at all, e.g. `ty bool = Yes | No`
-* It is possible to not specify a variant name, in that case it defaults to `new`:
+* The keyword `ty` creates an enum type with one variant `new`, i.e.
 *   ty Filter = iter: I + pred: P
-* is roughly equivalent to
-*   ty Filter = new iter: I + pred: P
-* A variant of an enum can be constructed like this: `bool.yes`, `Filter.new` with
-*   arguments next if any data was attached, i.e. `Filter.new <expr of type I> <expr of type P>`
+* is equivalent to
+*   enum Filter = new iter: I + pred: P
+* Variants of an `enum` may contain tuple values,
+*   e.g. `enum optional = None | Some T`,
+*   may contain fields, e.g. `enum Position = Global | Local place: Place`
+*   or not contain anything at all, e.g. `enum bool = yes | no`
+
+* A variant of a type can be constructed like this: `bool.yes`, `Filter.new` with
+*   arguments next if any data was attached, e.g. `Filter.new <expr of type I> <expr of type P>`
 *
-* Why should you omit defining `new` manually?
-*   The answer is that non-uppercase variants cannot be parsed to prevent ambiguity in cases such as
-*   `ty Point = x y: i32`.
-*   However there are no such restrictions on the attached data names
-*
-* If an enum has one variant, then it is possible to access its attached data through
+* If a type has one variant then it is possible to access its attached data through
 *   a dot-notation, i.e. `Filter.iter` or `Filter.pred`
 *
 * Tuples are also instances of enums with default variant `new`
@@ -68,7 +63,8 @@ ty Filter
 
 * `impl <idea> :: <type>` means implementation of an idea to that given type.
 * Rust: `impl <I: ..., P: ...> Iterator for Filter <I, P>`
-* Note that it is necessary to indicate I and P here
+* Note that it is necessary to indicate I and P here.
+*   They are passed to the `Filter` and automatically added to the `impl`'s generics
 impl Filter I P :: Iterator
 	ty Item = I.Item
 
@@ -87,7 +83,7 @@ where
 	*   it's not a type of a function, but a description of a signature for a functor
 	P: λI.Item -> bool
 
-idea Add U
+idea Add
 	ty Return
 	add other: U -> Y.Return
 * This means that `U` may not be specified and
@@ -96,7 +92,7 @@ idea Add U
 where U defaultsto Y
 
 * Ideas can also be shortened
-* Is implemented automatically on every type
+* `Default `is implemented automatically on every type
 idea Default = const DEFAULT: Y
 
 idea Sum = sum.! Y -> Y.Item
@@ -112,8 +108,8 @@ where
 	I: Iterator
 	I.Item: Default + Add
 
-* `value |> func args` is equivalent to
-* `func value args`
+* `value |> func args...` is equivalent to
+* `func value args...`
 * This operator exists to make the code clearer and cleaner
 eulerTask1 = Filter.new 0..1000 { it % 3 == 0 or it % 5 == 0 } |> sum |> println
 
@@ -134,12 +130,12 @@ loop
 	* That lambda ignores the error given and just
 	*	invokes `continue`
 	* `continue` has the return type of `!`, and
-	* 	`parse::u32 input` has type of `u32`,
+	* 	`input.trim.parse <u32>` has type of `u32`,
 	*	but `or` requires for them to be equal,
 	*	so how does it work?
 	* This works because `!` type implements
 	*	implicit cast to any other type
-	guess = input.trim.parse::u32.or { continue }
+	guess = input.trim.parse <u32>.or { continue }
 
 	* Inside a string literal `$` and a name following it
 	* 	inserts the value of a variable into
@@ -190,7 +186,7 @@ valueInCents coin: Coin = choose coin
 
 
 * Double each value
-([1 2 3 4].iter.map { it × 2 }).collect::Vec i32
+([1 2 3 4].iter.map { it * 2 }).collect::Vec i32
 
 * Sum all values
 [1 2 3 4].iter.sum

@@ -48,6 +48,13 @@ entry:
   ret void
 }
 
+define void @Iter.new(i8 %0, %Iter* %1) {
+entry:
+  %2 = getelementptr inbounds %Iter, %Iter* %1, i32 0, i32 0
+  store i8 %0, i8* %2
+  ret void
+}
+
 define void @doSmth(%Iter* %0, %Iter* %1, %Iter* %2) {
 entry:
   %3 = alloca %Iter

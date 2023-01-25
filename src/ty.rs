@@ -103,6 +103,42 @@ impl TypeDef {
 			}
 		}]
 	}
+
+	pub fn generate_variant_constructors <'a> (&'a self, mother_ty: &'a Type) -> impl Iterator <Item = AssociatedMethod> + '_ {
+		self.variants.iter().enumerate().map(|(variant_index, variant)| AssociatedMethod {
+			def: FunDef {
+				name: variant.name.clone(),
+				args: match &variant.data {
+					TypeVariantAttachedData::None => vec![],
+					TypeVariantAttachedData::Tuple(tuple) => Tuple::get(match &tuple.kind {
+						TypeKind::Tuple { index } => *index,
+						_ => unimplemented!("unreachable")
+					}).iter().enumerate().map(|(index, field)| FunArg {
+						name: char::from_u32('a' as u32 + index as u32).unwrap().to_string(),
+						ty: field.clone(),
+						state: VariableState::valid(field),
+					}).collect(),
+					TypeVariantAttachedData::Struct { fields, .. } => {
+						fields.iter().map(|field| FunArg {
+							name: field.name.clone(),
+							ty: field.ty.clone(),
+							state: VariableState::valid(&field.ty)
+						}).collect()
+					}
+				},
+				body: FunBody::Builtin(BuiltinFunBody::VariantFieldConstructor {
+					mother_ty: mother_ty.clone(),
+					variant_index
+				}),
+				ret_ty: FunRetType::Determined(mother_ty.clone()),
+				is_simple: false,
+				llvm_fun: None,
+				vals: vec![],
+			},
+			kind: AssociatedMethodKind::Static,
+			state_of_i: VariableState::valid(mother_ty),
+		})
+	}
 }
 
 #[derive(Debug, Clone)]

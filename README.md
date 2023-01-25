@@ -201,3 +201,6 @@ block
     <stmt1>
     <stmtN>
 ```
+
+Each enum now have methods that can create instances of that enum --
+    names correspond to variants' names

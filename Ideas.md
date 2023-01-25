@@ -116,3 +116,18 @@
 * Add `typeof` operator
 * Think about effects from `Koka`, maybe it will be possible to use them
 * Forget not about `posit`s and maybe implement them
+* Maybe add kw `fun`
+* Add kw `prove` which would require compiler to prove the expression is true
+    For example:
+    ```
+    k := 2
+    d := 14
+    prove k + d == 16
+  
+    * someVal: i64
+    if someVal > 5 do return
+    prove someVal <= 4
+    ```
+    Compilation should fail if compiler failed to prove.
+    Also, branches in `choose` expr may be omitted if compiler can prove
+    They are never reached

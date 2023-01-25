@@ -47,30 +47,34 @@ fn parse_methods_of_type_list(input: &mut ParseFunBodyInputStruct, type_list: &m
 }
 
 pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: Option <AssociatedMethodKind>) {
-    let code = match &mut fun.body {
-        FunBody::Raw { code } => code,
-        // Already parsed; ignore
-        FunBody::Baked(_) => return
-    };
+    match &mut fun.body {
+        FunBody::Raw { code } => {
+            let body = if fun.is_simple {
+                let (fun_stmt, _) = handle_complex_body_line(&format!("return {code}\n"), input);
+                let ty = match &fun_stmt[0] {
+                    FunStmt::Return(expr) => &expr.ty,
+                    _ => unreachable!()
+                };
+                match &mut fun.ret_ty {
+                    x@FunRetType::Undetermined => *x = FunRetType::Determined(ty.clone()),
+                    FunRetType::Determined(ret) => if *ret != *ty {
+                        panic!("return types do not match in function `{}`", fun.name)
+                    }
+                }
+                fun_stmt
+            } else {
+                let (fun_stmts, ty) = handle_complex_body_line(&*code, input);
+                assert_eq!(ty, Type::UNIT_TUPLE, "a statement in a complex function is not of `()` type");
+                fun_stmts
+            };
 
-    let body = if fun.is_simple {
-        let (fun_stmt, _) = handle_complex_body_line(&format!("return {code}\n"), input);
-        let ty = match &fun_stmt[0] {
-            FunStmt::Return(expr) => &expr.ty,
-            _ => unreachable!()
-        };
-        match &mut fun.ret_ty {
-            x@FunRetType::Undetermined => *x = FunRetType::Determined(ty.clone()),
-            FunRetType::Determined(ret) => if *ret != *ty {
-                panic!("return types do not match in function `{}`", fun.name)
-            }
-        }
-        fun_stmt
-    } else {
-        let (fun_stmts, ty) = handle_complex_body_line(&*code, input);
-        assert_eq!(ty, Type::UNIT_TUPLE, "a statement in a complex function is not of `()` type");
-        fun_stmts
-    };
+            fun.body = FunBody::Baked(body);
+        },
+        // Already parsed; ignore
+        FunBody::Baked(_) => return,
+        // Body will be set later
+        FunBody::Builtin(_) => ()
+    }
 
     let mut args = fun.args.iter().map(|x| x.llvm_type()).collect::<Vec <_>>();
     let ret_ty = fun.ret_ty.as_determined();
@@ -84,5 +88,4 @@ pub fn parse_fun_body(fun: &mut FunDef, input: ParseFunBodyInput, method_info: O
     } else {
         create_llvm_fun(&fun.name, args, ret_ty)
     });
-    fun.body = FunBody::Baked(body);
 }

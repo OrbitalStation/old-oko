@@ -18,6 +18,11 @@ source_filename = "oko"
 
 %Opaque = type {}
 
+define void @Opaque.opaque(%Opaque* %0) {
+entry:
+  ret void
+}
+
 declare i32 @puts(i8*)
 
 declare i8 @foo(%Opaque)

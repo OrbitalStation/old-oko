@@ -1,82 +1,15 @@
-enum bool = yes | no
-	id.& = i
-
-enum bool2
-	Yes
-	No
+ty Filter
+	iter: u8
+	pred: u8
 
 	id.& = i
 
-enum TripleBool = Yes | No | Probably
-	id.& = i
-
-enum TripleBool2
-	Yes
-	No
-	Probably
+ty Info
+	date timestamp: i32
+	otherInfo: u8
+	filter: Filter
 
 	id.& = i
 
-enum SureBool = Sure
+ty Short = a: i8 + b: u8 + c: Info
 	id.& = i
-
-enum SureBool2
-	Sure
-
-	id.& = i
-
-enum NahBool = Nah
-	id.& = i
-
-enum NahBool2
-	Nah
-
-	id.& = i
-
-* ******************* *
-*      With data      *
-* ******************* *
-
-enum optional = None | Some i32
-	id.& = i
-
-enum optional2
-	None
-	Some i32
-
-	id.& = i
-
-enum result = Ok SureBool | Err NahBool
-	id.& = i
-
-enum result2
-	Ok SureBool
-	Err NahBool
-
-	id.& = i
-
-enum Position = TwoD x y: i32 | ThreeD x y z: i32 | FourD x y z w: i32
-	id.& = i
-
-enum Position2
-	TwoD
-		x: i32
-		y: i32
-	ThreeD x y z: i32
-	FourD
-		x y z: i32
-		w: i32
-
-	id.& = i
-
-enum PositionTuple = NoD | TwoD i32 i32 | ThreeD i32 i32 i32 | FourD i32 i32 i32 i32
-	id.& = i
-
-enum PositionTuple2
-	NoD
-	TwoD i32 i32
-	ThreeD i32 i32 i32
-	FourD i32 i32 i32 i32
-
-	id.& = i
-
